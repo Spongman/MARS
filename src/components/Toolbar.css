@@ -5,6 +5,7 @@
   background: #252526;
   border-bottom: 1px solid #404040;
   align-items: center;
+  position: relative;
 }
 
 .btn {
@@ -15,6 +16,7 @@
   cursor: pointer;
   transition: all 0.2s;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .btn-primary {
@@ -26,6 +28,10 @@
   background: #0098ff;
 }
 
+.btn-primary:active:not(:disabled) {
+  background: #005a9e;
+}
+
 .btn-secondary {
   background: #3e3e42;
   color: #e0e0e0;
@@ -35,6 +41,10 @@
   background: #4e4e54;
 }
 
+.btn-secondary:active:not(:disabled) {
+  background: #2d2d30;
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -42,4 +52,56 @@
 
 .spacer {
   flex: 1;
+}
+
+.example-dropdown {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: #2d2d30;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  min-width: 250px;
+  max-width: 350px;
+  z-index: 1000;
+  margin-top: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.dropdown-item {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #3e3e42;
+  color: #e0e0e0;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s;
+  font-size: 12px;
+}
+
+.dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.dropdown-item:hover {
+  background: #3e3e42;
+}
+
+.item-name {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #007acc;
+}
+
+.item-desc {
+  font-size: 11px;
+  color: #858585;
 }

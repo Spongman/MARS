@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
 import Editor from '@monaco-editor/react'
 import { useMarsStore } from './store/marsStore'
+import { useExamples } from './hooks/useExamples'
 import Toolbar from './components/Toolbar'
 import RegisterView from './components/RegisterView'
 import MemoryView from './components/MemoryView'
@@ -9,8 +10,10 @@ import './App.css'
 
 function App() {
   const { code, registers, memory, console, setCode, run, reset } = useMarsStore()
-  const [activeTab, setActiveTab] = useState('registers')
-  const [error, setError] = useState(null)
+  const [activeTab, setActiveTab] = React.useState('registers')
+  const [error, setError] = React.useState(null)
+
+  useExamples()
 
   const handleRun = async () => {
     setError(null)
@@ -34,7 +37,7 @@ function App() {
         <div className="error-bar">
           <span className="error-icon">⚠️</span>
           <span>{error}</span>
-          <button onClick={() => setError(null)}>✕</button>
+          <button onClick={() => setError(null)}>×</button>
         </div>
       )}
 
