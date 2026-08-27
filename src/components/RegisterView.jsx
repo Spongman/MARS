@@ -3,9 +3,9 @@ import './RegisterView.css'
 function RegisterView({ registers }) {
   const registerGroups = {
     'Zero/At': ['$zero', '$at'],
-    'Return': ['$v0', '$v1'],
+    'Return Values': ['$v0', '$v1'],
     'Arguments': ['$a0', '$a1', '$a2', '$a3'],
-    'Temporary': ['$t0', '$t1', '$t2', '$t3', '$t4', '$t5', '$t6', '$t7'],
+    'Temporaries': ['$t0', '$t1', '$t2', '$t3', '$t4', '$t5', '$t6', '$t7'],
     'Saved': ['$s0', '$s1', '$s2', '$s3', '$s4', '$s5', '$s6', '$s7'],
     'More Temps': ['$t8', '$t9'],
     'Reserved': ['$k0', '$k1'],
@@ -14,7 +14,8 @@ function RegisterView({ registers }) {
   }
 
   const formatValue = (value) => {
-    return `0x${(value >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
+    const num = value >>> 0
+    return `0x${num.toString(16).toUpperCase().padStart(8, '0')} (${num})`
   }
 
   return (

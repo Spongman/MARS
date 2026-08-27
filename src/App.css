@@ -22,6 +22,31 @@
   opacity: 0.9;
 }
 
+.error-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: #5c2c2c;
+  color: #ff6b6b;
+  border-bottom: 1px solid #8b4444;
+  font-size: 13px;
+}
+
+.error-icon {
+  font-size: 16px;
+}
+
+.error-bar button {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+}
+
 .mars-container {
   display: flex;
   flex: 1;

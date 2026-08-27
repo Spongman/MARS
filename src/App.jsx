@@ -10,6 +10,16 @@ import './App.css'
 function App() {
   const { code, registers, memory, console, setCode, run, reset } = useMarsStore()
   const [activeTab, setActiveTab] = useState('registers')
+  const [error, setError] = useState(null)
+
+  const handleRun = async () => {
+    setError(null)
+    try {
+      await run()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
 
   return (
     <div className="mars-app">
@@ -18,7 +28,15 @@ function App() {
         <div className="version">Web Edition (JavaScript Port)</div>
       </header>
 
-      <Toolbar onRun={run} onReset={reset} />
+      <Toolbar onRun={handleRun} onReset={reset} />
+
+      {error && (
+        <div className="error-bar">
+          <span className="error-icon">⚠️</span>
+          <span>{error}</span>
+          <button onClick={() => setError(null)}>✕</button>
+        </div>
+      )}
 
       <div className="mars-container">
         <div className="editor-pane">

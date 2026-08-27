@@ -7,7 +7,7 @@ function Toolbar({ onRun, onReset }) {
         ▶ Run
       </button>
       <button className="btn btn-secondary" onClick={onReset}>
-        ⟲ Reset
+        ↻ Reset
       </button>
       <button className="btn btn-secondary" disabled>
         ⏸ Pause
@@ -16,10 +16,10 @@ function Toolbar({ onRun, onReset }) {
         ⏭ Step
       </button>
       <div className="spacer"></div>
-      <button className="btn btn-secondary">
+      <button className="btn btn-secondary" disabled>
         📁 Load File
       </button>
-      <button className="btn btn-secondary">
+      <button className="btn btn-secondary" disabled>
         💾 Save
       </button>
     </div>
