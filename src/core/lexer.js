@@ -65,17 +65,17 @@ export class Lexer {
     this.advance()
 
     switch (char) {
-      case ','
+      case ',':
         return new Token('COMMA', ',', line, col)
-      case '('
+      case '(':
         return new Token('LPAREN', '(', line, col)
-      case ')'
+      case ')':
         return new Token('RPAREN', ')', line, col)
-      case ':'
+      case ':':
         return new Token('COLON', ':', line, col)
-      case '$'
+      case '$':
         return new Token('DOLLAR', '$', line, col)
-      case '\n'
+      case '\n':
         return new Token('NEWLINE', '\n', line, col)
       default:
         throw new Error(`Unexpected character: ${char} at line ${line}:${col}`)
@@ -154,10 +154,10 @@ export class Lexer {
           case 't':
             value += '\t'
             break
-          case '\\'
+          case '\\':
             value += '\\'
             break
-          case '"'
+          case '"':
             value += '"'
             break
           default:

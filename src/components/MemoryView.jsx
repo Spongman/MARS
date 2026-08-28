@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import React from 'react'
 import './MemoryView.css'
 
 function MemoryView({ memory }) {
-  const [addressInput, setAddressInput] = useState('0x10010000')
+  const [addressInput, setAddressInput] = React.useState('0x10010000')
 
   const formatValue = (value) => {
     return `0x${(value >>> 0).toString(16).toUpperCase().padStart(8, '0')}`

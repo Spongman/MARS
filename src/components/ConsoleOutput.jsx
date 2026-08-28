@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react'
-import './ConsoleOutput.css'
+import React from 'react'
+import { useMarsStore } from '../store/marsStore'
 
 function ConsoleOutput({ output }) {
-  const endRef = useRef(null)
+  const endRef = React.useRef(null)
 
-  useEffect(() => {
+  React.useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [output])
 

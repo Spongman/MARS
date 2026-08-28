@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import React, { useEffect } from 'react'
 import Editor from '@monaco-editor/react'
 import { useMarsStore } from './store/marsStore'
 import { useExamples } from './hooks/useExamples'
@@ -15,14 +15,19 @@ function App() {
 
   useExamples()
 
-  const handleRun = async () => {
+  const handleRun = React.useCallback(async () => {
     setError(null)
     try {
       await run()
     } catch (err) {
       setError(err.message)
     }
-  }
+  }, [run])
+
+  const handleReset = React.useCallback(() => {
+    setError(null)
+    reset()
+  }, [reset])
 
   return (
     <div className="mars-app">
@@ -31,7 +36,7 @@ function App() {
         <div className="version">Web Edition (JavaScript Port)</div>
       </header>
 
-      <Toolbar onRun={handleRun} onReset={reset} />
+      <Toolbar onRun={handleRun} onReset={handleReset} />
 
       {error && (
         <div className="error-bar">

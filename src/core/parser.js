@@ -11,21 +11,6 @@ export class Instruction {
   }
 }
 
-export class Directive {
-  constructor(name, args = []) {
-    this.name = name
-    this.args = args
-    this.address = null
-  }
-}
-
-export class Label {
-  constructor(name, address) {
-    this.name = name
-    this.address = address
-  }
-}
-
 export class Parser {
   constructor(tokens) {
     this.tokens = tokens
