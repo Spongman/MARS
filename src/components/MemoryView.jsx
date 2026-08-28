@@ -8,7 +8,7 @@ function MemoryView({ memory }) {
     return `0x${(value >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
   }
 
-  const memoryEntries = Object.entries(memory).slice(0, 20) // Show first 20 entries
+  const memoryEntries = Object.entries(memory).slice(0, 20)
 
   return (
     <div className="memory-view">
