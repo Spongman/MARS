@@ -1,5 +1,5 @@
 /**
- * MIPS Runtime Simulator - Executes MIPS machine code
+ * MIPS Runtime Simulator with Breakpoint & Step-Through Support
  */
 
 export class MipsSimulator {
@@ -14,8 +14,12 @@ export class MipsSimulator {
     this.console = ''
     this.running = false
     this.halted = false
+    this.paused = false
     this.instructionCount = 0
     this.addressToInstructionMap = new Map()
+    this.breakpoints = new Set() // Set of addresses with breakpoints
+    this.executionHistory = [] // Track recent instructions
+    this.maxHistorySize = 100
     this.buildAddressMap()
   }
 
@@ -69,10 +73,16 @@ export class MipsSimulator {
 
   run() {
     this.running = true
+    this.paused = false
     this.console = ''
 
     try {
       while (this.running && !this.halted && this.instructionCount < 100000) {
+        if (this.breakpoints.has(this.pc)) {
+          this.paused = true
+          this.running = false
+          break
+        }
         this.step()
       }
     } catch (error) {
@@ -95,9 +105,92 @@ export class MipsSimulator {
     const code = this.machineCode[instrIndex]
     const instr = this.program.instructions[instrIndex]
 
+    // Record execution history
+    this.executionHistory.push({
+      address: this.pc,
+      instruction: instr,
+      registers: { ...this.registers },
+      memory: this.getMemoryView(),
+    })
+    if (this.executionHistory.length > this.maxHistorySize) {
+      this.executionHistory.shift()
+    }
+
     this.executeInstruction(code, instr)
     this.pc += 4
     this.instructionCount++
+  }
+
+  stepOver() {
+    // Skip over function calls
+    const instrIndex = this.addressToInstructionMap.get(this.pc)
+    if (instrIndex >= 0 && instrIndex < this.program.instructions.length) {
+      const instr = this.program.instructions[instrIndex]
+      if (instr.name === 'JAL' || instr.name === 'JALR') {
+        // Set a breakpoint at the next instruction
+        const nextAddr = this.pc + 4
+        this.breakpoints.add(nextAddr)
+        this.run()
+        this.breakpoints.delete(nextAddr)
+        return
+      }
+    }
+    this.step()
+  }
+
+  continue() {
+    this.paused = false
+    this.run()
+  }
+
+  addBreakpoint(address) {
+    this.breakpoints.add(address)
+  }
+
+  removeBreakpoint(address) {
+    this.breakpoints.delete(address)
+  }
+
+  toggleBreakpoint(address) {
+    if (this.breakpoints.has(address)) {
+      this.removeBreakpoint(address)
+      return false
+    } else {
+      this.addBreakpoint(address)
+      return true
+    }
+  }
+
+  getBreakpoints() {
+    return Array.from(this.breakpoints)
+  }
+
+  getCallStack() {
+    const stack = []
+    let addr = this.registers['$ra']
+    while (addr !== 0 && stack.length < 20) {
+      const instrIndex = this.addressToInstructionMap.get(addr)
+      if (instrIndex >= 0) {
+        stack.push({
+          address: addr,
+          instruction: this.program.instructions[instrIndex]?.name || 'UNKNOWN',
+        })
+      }
+      addr = this.readMemory(this.registers['$sp'], 4)
+    }
+    return stack
+  }
+
+  getExecutionHistory() {
+    return this.executionHistory
+  }
+
+  getSourceLine(address) {
+    const instrIndex = this.addressToInstructionMap.get(address)
+    if (instrIndex >= 0 && instrIndex < this.program.instructions.length) {
+      return this.program.instructions[instrIndex]
+    }
+    return null
   }
 
   executeInstruction(code, instr) {
@@ -278,7 +371,7 @@ export class MipsSimulator {
         case 'LH': {
           const addr = this.getMemAddress(instr.args[1])
           const value = this.readMemory(addr, 2)
-          this.setReg(instr.args[0], value << 16 >> 16) // Sign extend
+          this.setReg(instr.args[0], value << 16 >> 16)
           break
         }
         case 'LHU': {
@@ -290,7 +383,7 @@ export class MipsSimulator {
         case 'LB': {
           const addr = this.getMemAddress(instr.args[1])
           const value = this.readMemory(addr, 1)
-          this.setReg(instr.args[0], value << 24 >> 24) // Sign extend
+          this.setReg(instr.args[0], value << 24 >> 24)
           break
         }
         case 'LBU': {
@@ -430,11 +523,10 @@ export class MipsSimulator {
     const code = this.registers['$v0'] | 0
 
     switch (code) {
-      case 1: // Print integer
+      case 1:
         this.console += (this.registers['$a0'] | 0)
         break
-      case 4: // Print string
-        // Read string from memory at $a0
+      case 4:
         let addr = this.registers['$a0'] >>> 0
         let str = ''
         for (let i = 0; i < 1000; i++) {
@@ -445,16 +537,14 @@ export class MipsSimulator {
         }
         this.console += str
         break
-      case 5: // Read integer
-        // TODO: Interactive input
+      case 5:
         break
-      case 8: // Read string
-        // TODO: Interactive input
+      case 8:
         break
-      case 10: // Exit
+      case 10:
         this.halted = true
         break
-      case 11: // Print character
+      case 11:
         this.console += String.fromCharCode(this.registers['$a0'] & 0xff)
         break
     }
@@ -537,6 +627,8 @@ export class MipsSimulator {
       hi: this.hi,
       lo: this.lo,
       instructionCount: this.instructionCount,
+      paused: this.paused,
+      halted: this.halted,
     }
   }
 

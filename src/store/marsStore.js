@@ -40,7 +40,7 @@ const initialRegisters = {
   $lo: 0,
 }
 
-export const useMarsStore = create((set) => {
+export const useMarsStore = create((set, get) => {
   let simulator = null
 
   return {
@@ -50,6 +50,9 @@ export const useMarsStore = create((set) => {
     console: '',
     currentLine: 0,
     isRunning: false,
+    isPaused: false,
+    breakpoints: new Set(),
+    executionHistory: [],
 
     setCode: (newCode) => set({ code: newCode }),
 
@@ -68,17 +71,12 @@ export const useMarsStore = create((set) => {
       return new Promise((resolve, reject) => {
         set((state) => {
           try {
-            // Assemble code
             const assembler = new Assembler(state.code)
             const { program, machineCode } = assembler.assemble()
 
-            // Create simulator
             simulator = new MipsSimulator(machineCode, program)
-
-            // Run program
             simulator.run()
 
-            // Get final state
             const finalState = simulator.getState()
 
             return {
@@ -86,6 +84,8 @@ export const useMarsStore = create((set) => {
               memory: finalState.memory,
               console: finalState.console,
               isRunning: false,
+              isPaused: finalState.paused,
+              executionHistory: simulator.getExecutionHistory(),
             }
           } catch (error) {
             reject(error)
@@ -96,6 +96,98 @@ export const useMarsStore = create((set) => {
       })
     },
 
+    step: () => {
+      if (!simulator) {
+        const state = get()
+        try {
+          const assembler = new Assembler(state.code)
+          const { program, machineCode } = assembler.assemble()
+          simulator = new MipsSimulator(machineCode, program)
+        } catch (error) {
+          set({ console: `Error: ${error.message}` })
+          return
+        }
+      }
+
+      simulator.step()
+      const finalState = simulator.getState()
+
+      set({
+        registers: finalState.registers,
+        memory: finalState.memory,
+        console: finalState.console,
+        isPaused: true,
+      })
+    },
+
+    stepOver: () => {
+      if (!simulator) return
+      simulator.stepOver()
+      const finalState = simulator.getState()
+
+      set({
+        registers: finalState.registers,
+        memory: finalState.memory,
+        console: finalState.console,
+        isPaused: true,
+      })
+    },
+
+    pause: () => {
+      if (simulator) {
+        simulator.paused = true
+        simulator.running = false
+        const finalState = simulator.getState()
+        set({
+          isPaused: true,
+          isRunning: false,
+          registers: finalState.registers,
+          memory: finalState.memory,
+        })
+      }
+    },
+
+    continue: () => {
+      if (simulator) {
+        simulator.continue()
+        const finalState = simulator.getState()
+        set({
+          registers: finalState.registers,
+          memory: finalState.memory,
+          console: finalState.console,
+          isPaused: finalState.paused,
+          isRunning: false,
+        })
+      }
+    },
+
+    addBreakpoint: (address) => {
+      if (simulator) {
+        simulator.addBreakpoint(address)
+        set((state) => ({
+          breakpoints: new Set(simulator.getBreakpoints()),
+        }))
+      }
+    },
+
+    removeBreakpoint: (address) => {
+      if (simulator) {
+        simulator.removeBreakpoint(address)
+        set((state) => ({
+          breakpoints: new Set(simulator.getBreakpoints()),
+        }))
+      }
+    },
+
+    toggleBreakpoint: (address) => {
+      if (simulator) {
+        simulator.toggleBreakpoint(address)
+        set((state) => ({
+          breakpoints: new Set(simulator.getBreakpoints()),
+        }))
+      }
+    },
+
     reset: () =>
       set({
         registers: initialRegisters,
@@ -103,6 +195,9 @@ export const useMarsStore = create((set) => {
         console: '',
         currentLine: 0,
         isRunning: false,
+        isPaused: false,
+        breakpoints: new Set(),
+        executionHistory: [],
       }),
   }
 })

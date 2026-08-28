@@ -1,12 +1,13 @@
-import { useState } from 'react'
-import { EXAMPLES } from '../examples'
+import React from 'react'
+import { useMarsStore } from '../store/marsStore'
 import './Toolbar.css'
+import { EXAMPLES } from '../examples'
 
 function Toolbar({ onRun, onReset }) {
-  const [showExamples, setShowExamples] = useState(false)
+  const { step, stepOver, pause, isPaused } = useMarsStore()
+  const [showExamples, setShowExamples] = React.useState(false)
 
   const handleLoadExample = (example) => {
-    // This should be passed from parent or via store
     window.dispatchEvent(
       new CustomEvent('load-example', {
         detail: { code: example.code },
@@ -23,11 +24,11 @@ function Toolbar({ onRun, onReset }) {
       <button className="btn btn-secondary" onClick={onReset}>
         ↻ Reset
       </button>
-      <button className="btn btn-secondary" disabled>
-        ⏸ Pause
-      </button>
-      <button className="btn btn-secondary" disabled>
+      <button className="btn btn-secondary" onClick={() => step()}>
         ⏭ Step
+      </button>
+      <button className="btn btn-secondary" onClick={() => stepOver()}>
+        ⏭⏭ Step Over
       </button>
       <div className="spacer"></div>
       <div className="example-dropdown">
