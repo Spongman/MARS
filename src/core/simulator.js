@@ -76,7 +76,7 @@ export class MipsSimulator {
         this.step()
       }
     } catch (error) {
-      this.console += `Error: ${error.message}\n`
+      this.console += `\nError: ${error.message}\n`
       this.halted = true
     }
 
@@ -105,335 +105,339 @@ export class MipsSimulator {
 
     const name = instr.name
 
-    switch (name) {
-      // Arithmetic
-      case 'ADD':
-      case 'ADDU': {
-        const rs = this.getReg(instr.args[1])
-        const rt = this.getReg(instr.args[2])
-        this.setReg(instr.args[0], (rs + rt) | 0)
-        break
-      }
-      case 'ADDI':
-      case 'ADDIU': {
-        const rs = this.getReg(instr.args[1])
-        const imm = this.getImm(instr.args[2])
-        this.setReg(instr.args[0], (rs + imm) | 0)
-        break
-      }
-      case 'SUB':
-      case 'SUBU': {
-        const rs = this.getReg(instr.args[1])
-        const rt = this.getReg(instr.args[2])
-        this.setReg(instr.args[0], (rs - rt) | 0)
-        break
-      }
-
-      // Logical
-      case 'AND': {
-        const rs = this.getReg(instr.args[1])
-        const rt = this.getReg(instr.args[2])
-        this.setReg(instr.args[0], rs & rt)
-        break
-      }
-      case 'ANDI': {
-        const rs = this.getReg(instr.args[1])
-        const imm = this.getImm(instr.args[2])
-        this.setReg(instr.args[0], rs & imm)
-        break
-      }
-      case 'OR': {
-        const rs = this.getReg(instr.args[1])
-        const rt = this.getReg(instr.args[2])
-        this.setReg(instr.args[0], rs | rt)
-        break
-      }
-      case 'ORI': {
-        const rs = this.getReg(instr.args[1])
-        const imm = this.getImm(instr.args[2])
-        this.setReg(instr.args[0], rs | imm)
-        break
-      }
-      case 'XOR': {
-        const rs = this.getReg(instr.args[1])
-        const rt = this.getReg(instr.args[2])
-        this.setReg(instr.args[0], rs ^ rt)
-        break
-      }
-      case 'XORI': {
-        const rs = this.getReg(instr.args[1])
-        const imm = this.getImm(instr.args[2])
-        this.setReg(instr.args[0], rs ^ imm)
-        break
-      }
-      case 'NOR': {
-        const rs = this.getReg(instr.args[1])
-        const rt = this.getReg(instr.args[2])
-        this.setReg(instr.args[0], ~(rs | rt))
-        break
-      }
-
-      // Shifts
-      case 'SLL': {
-        const rt = this.getReg(instr.args[1])
-        const shamt = this.getImm(instr.args[2])
-        this.setReg(instr.args[0], (rt << shamt) | 0)
-        break
-      }
-      case 'SRL': {
-        const rt = this.getReg(instr.args[1])
-        const shamt = this.getImm(instr.args[2])
-        this.setReg(instr.args[0], (rt >>> shamt) | 0)
-        break
-      }
-      case 'SRA': {
-        const rt = this.getReg(instr.args[1])
-        const shamt = this.getImm(instr.args[2])
-        this.setReg(instr.args[0], (rt >> shamt) | 0)
-        break
-      }
-
-      // Comparison
-      case 'SLT': {
-        const rs = this.getReg(instr.args[1])
-        const rt = this.getReg(instr.args[2])
-        this.setReg(instr.args[0], rs < rt ? 1 : 0)
-        break
-      }
-      case 'SLTI': {
-        const rs = this.getReg(instr.args[1])
-        const imm = this.getImm(instr.args[2])
-        this.setReg(instr.args[0], rs < imm ? 1 : 0)
-        break
-      }
-      case 'SLTU': {
-        const rs = this.getReg(instr.args[1]) >>> 0
-        const rt = this.getReg(instr.args[2]) >>> 0
-        this.setReg(instr.args[0], rs < rt ? 1 : 0)
-        break
-      }
-      case 'SLTIU': {
-        const rs = this.getReg(instr.args[1]) >>> 0
-        const imm = this.getImm(instr.args[2]) >>> 0
-        this.setReg(instr.args[0], rs < imm ? 1 : 0)
-        break
-      }
-
-      // Multiply/Divide
-      case 'MULT': {
-        const rs = this.getReg(instr.args[0]) | 0
-        const rt = this.getReg(instr.args[1]) | 0
-        const result = rs * rt
-        this.hi = Math.floor(result / 0x100000000) | 0
-        this.lo = result | 0
-        break
-      }
-      case 'MULTU': {
-        const rs = (this.getReg(instr.args[0]) >>> 0) * 1
-        const rt = (this.getReg(instr.args[1]) >>> 0) * 1
-        const result = rs * rt
-        this.hi = Math.floor(result / 0x100000000) | 0
-        this.lo = result >>> 0
-        break
-      }
-      case 'DIV': {
-        const rs = this.getReg(instr.args[0]) | 0
-        const rt = this.getReg(instr.args[1]) | 0
-        if (rt !== 0) {
-          this.lo = Math.floor(rs / rt) | 0
-          this.hi = (rs % rt) | 0
+    try {
+      switch (name) {
+        // Arithmetic
+        case 'ADD':
+        case 'ADDU': {
+          const rs = this.getReg(instr.args[1])
+          const rt = this.getReg(instr.args[2])
+          this.setReg(instr.args[0], (rs + rt) | 0)
+          break
         }
-        break
-      }
-      case 'DIVU': {
-        const rs = this.getReg(instr.args[0]) >>> 0
-        const rt = this.getReg(instr.args[1]) >>> 0
-        if (rt !== 0) {
-          this.lo = Math.floor(rs / rt) >>> 0
-          this.hi = (rs % rt) >>> 0
+        case 'ADDI':
+        case 'ADDIU': {
+          const rs = this.getReg(instr.args[1])
+          const imm = this.getImm(instr.args[2])
+          this.setReg(instr.args[0], (rs + imm) | 0)
+          break
         }
-        break
-      }
-      case 'MFHI':
-        this.setReg(instr.args[0], this.hi)
-        break
-      case 'MFLO':
-        this.setReg(instr.args[0], this.lo)
-        break
-      case 'MTHI':
-        this.hi = this.getReg(instr.args[0]) | 0
-        break
-      case 'MTLO':
-        this.lo = this.getReg(instr.args[0]) | 0
-        break
+        case 'SUB':
+        case 'SUBU': {
+          const rs = this.getReg(instr.args[1])
+          const rt = this.getReg(instr.args[2])
+          this.setReg(instr.args[0], (rs - rt) | 0)
+          break
+        }
 
-      // Load/Store
-      case 'LW': {
-        const addr = this.getMemAddress(instr.args[1])
-        const value = this.readMemory(addr, 4)
-        this.setReg(instr.args[0], value)
-        break
-      }
-      case 'LH': {
-        const addr = this.getMemAddress(instr.args[1])
-        const value = this.readMemory(addr, 2)
-        this.setReg(instr.args[0], value << 16 >> 16) // Sign extend
-        break
-      }
-      case 'LHU': {
-        const addr = this.getMemAddress(instr.args[1])
-        const value = this.readMemory(addr, 2)
-        this.setReg(instr.args[0], value)
-        break
-      }
-      case 'LB': {
-        const addr = this.getMemAddress(instr.args[1])
-        const value = this.readMemory(addr, 1)
-        this.setReg(instr.args[0], value << 24 >> 24) // Sign extend
-        break
-      }
-      case 'LBU': {
-        const addr = this.getMemAddress(instr.args[1])
-        const value = this.readMemory(addr, 1)
-        this.setReg(instr.args[0], value)
-        break
-      }
-      case 'SW': {
-        const addr = this.getMemAddress(instr.args[1])
-        const value = this.getReg(instr.args[0])
-        this.writeMemory(addr, value, 4)
-        break
-      }
-      case 'SH': {
-        const addr = this.getMemAddress(instr.args[1])
-        const value = this.getReg(instr.args[0])
-        this.writeMemory(addr, value, 2)
-        break
-      }
-      case 'SB': {
-        const addr = this.getMemAddress(instr.args[1])
-        const value = this.getReg(instr.args[0])
-        this.writeMemory(addr, value, 1)
-        break
-      }
-      case 'LUI': {
-        const imm = this.getImm(instr.args[1])
-        this.setReg(instr.args[0], (imm << 16) | 0)
-        break
-      }
+        // Logical
+        case 'AND': {
+          const rs = this.getReg(instr.args[1])
+          const rt = this.getReg(instr.args[2])
+          this.setReg(instr.args[0], rs & rt)
+          break
+        }
+        case 'ANDI': {
+          const rs = this.getReg(instr.args[1])
+          const imm = this.getImm(instr.args[2])
+          this.setReg(instr.args[0], rs & imm)
+          break
+        }
+        case 'OR': {
+          const rs = this.getReg(instr.args[1])
+          const rt = this.getReg(instr.args[2])
+          this.setReg(instr.args[0], rs | rt)
+          break
+        }
+        case 'ORI': {
+          const rs = this.getReg(instr.args[1])
+          const imm = this.getImm(instr.args[2])
+          this.setReg(instr.args[0], rs | imm)
+          break
+        }
+        case 'XOR': {
+          const rs = this.getReg(instr.args[1])
+          const rt = this.getReg(instr.args[2])
+          this.setReg(instr.args[0], rs ^ rt)
+          break
+        }
+        case 'XORI': {
+          const rs = this.getReg(instr.args[1])
+          const imm = this.getImm(instr.args[2])
+          this.setReg(instr.args[0], rs ^ imm)
+          break
+        }
+        case 'NOR': {
+          const rs = this.getReg(instr.args[1])
+          const rt = this.getReg(instr.args[2])
+          this.setReg(instr.args[0], ~(rs | rt))
+          break
+        }
 
-      // Jump & Branch
-      case 'BEQ': {
-        const rs = this.getReg(instr.args[0])
-        const rt = this.getReg(instr.args[1])
-        if (rs === rt) {
-          const offset = this.getImm(instr.args[2])
-          this.pc = (this.pc + 4 + offset * 4 - 4) | 0 // -4 because PC will be incremented
+        // Shifts
+        case 'SLL': {
+          const rt = this.getReg(instr.args[1])
+          const shamt = this.getImm(instr.args[2])
+          this.setReg(instr.args[0], (rt << shamt) | 0)
+          break
         }
-        break
-      }
-      case 'BNE': {
-        const rs = this.getReg(instr.args[0])
-        const rt = this.getReg(instr.args[1])
-        if (rs !== rt) {
-          const offset = this.getImm(instr.args[2])
-          this.pc = (this.pc + 4 + offset * 4 - 4) | 0
+        case 'SRL': {
+          const rt = this.getReg(instr.args[1])
+          const shamt = this.getImm(instr.args[2])
+          this.setReg(instr.args[0], (rt >>> shamt) | 0)
+          break
         }
-        break
-      }
-      case 'BGEZ': {
-        const rs = this.getReg(instr.args[0])
-        if (rs >= 0) {
-          const offset = this.getImm(instr.args[1])
-          this.pc = (this.pc + 4 + offset * 4 - 4) | 0
+        case 'SRA': {
+          const rt = this.getReg(instr.args[1])
+          const shamt = this.getImm(instr.args[2])
+          this.setReg(instr.args[0], (rt >> shamt) | 0)
+          break
         }
-        break
-      }
-      case 'BGTZ': {
-        const rs = this.getReg(instr.args[0])
-        if (rs > 0) {
-          const offset = this.getImm(instr.args[1])
-          this.pc = (this.pc + 4 + offset * 4 - 4) | 0
-        }
-        break
-      }
-      case 'BLEZ': {
-        const rs = this.getReg(instr.args[0])
-        if (rs <= 0) {
-          const offset = this.getImm(instr.args[1])
-          this.pc = (this.pc + 4 + offset * 4 - 4) | 0
-        }
-        break
-      }
-      case 'BLTZ': {
-        const rs = this.getReg(instr.args[0])
-        if (rs < 0) {
-          const offset = this.getImm(instr.args[1])
-          this.pc = (this.pc + 4 + offset * 4 - 4) | 0
-        }
-        break
-      }
-      case 'J': {
-        const address = this.getImm(instr.args[0])
-        this.pc = ((this.pc & 0xf0000000) | (address << 2)) - 4
-        break
-      }
-      case 'JAL': {
-        this.registers['$ra'] = (this.pc + 4) | 0
-        const address = this.getImm(instr.args[0])
-        this.pc = ((this.pc & 0xf0000000) | (address << 2)) - 4
-        break
-      }
-      case 'JR': {
-        const addr = this.getReg(instr.args[0])
-        this.pc = addr - 4
-        break
-      }
-      case 'JALR': {
-        this.registers['$ra'] = (this.pc + 4) | 0
-        const addr = this.getReg(instr.args[0])
-        this.pc = addr - 4
-        break
-      }
 
-      // Pseudo-instructions
-      case 'NOP':
-        break
-      case 'MOVE': {
-        const rs = this.getReg(instr.args[1])
-        this.setReg(instr.args[0], rs)
-        break
-      }
-      case 'LI': {
-        const imm = this.getImm(instr.args[1])
-        this.setReg(instr.args[0], imm)
-        break
-      }
-      case 'LA': {
-        const addr = this.getImm(instr.args[1])
-        this.setReg(instr.args[0], addr)
-        break
-      }
+        // Comparison
+        case 'SLT': {
+          const rs = this.getReg(instr.args[1])
+          const rt = this.getReg(instr.args[2])
+          this.setReg(instr.args[0], rs < rt ? 1 : 0)
+          break
+        }
+        case 'SLTI': {
+          const rs = this.getReg(instr.args[1])
+          const imm = this.getImm(instr.args[2])
+          this.setReg(instr.args[0], rs < imm ? 1 : 0)
+          break
+        }
+        case 'SLTU': {
+          const rs = (this.getReg(instr.args[1]) >>> 0)
+          const rt = (this.getReg(instr.args[2]) >>> 0)
+          this.setReg(instr.args[0], rs < rt ? 1 : 0)
+          break
+        }
+        case 'SLTIU': {
+          const rs = (this.getReg(instr.args[1]) >>> 0)
+          const imm = (this.getImm(instr.args[2]) >>> 0)
+          this.setReg(instr.args[0], rs < imm ? 1 : 0)
+          break
+        }
 
-      // System
-      case 'SYSCALL':
-        this.handleSyscall()
-        break
+        // Multiply/Divide
+        case 'MULT': {
+          const rs = this.getReg(instr.args[0]) | 0
+          const rt = this.getReg(instr.args[1]) | 0
+          const result = rs * rt
+          this.hi = Math.floor(result / 0x100000000) | 0
+          this.lo = result | 0
+          break
+        }
+        case 'MULTU': {
+          const rs = (this.getReg(instr.args[0]) >>> 0)
+          const rt = (this.getReg(instr.args[1]) >>> 0)
+          const result = rs * rt
+          this.hi = Math.floor(result / 0x100000000) >>> 0
+          this.lo = result >>> 0
+          break
+        }
+        case 'DIV': {
+          const rs = this.getReg(instr.args[0]) | 0
+          const rt = this.getReg(instr.args[1]) | 0
+          if (rt !== 0) {
+            this.lo = Math.floor(rs / rt) | 0
+            this.hi = (rs % rt) | 0
+          }
+          break
+        }
+        case 'DIVU': {
+          const rs = this.getReg(instr.args[0]) >>> 0
+          const rt = this.getReg(instr.args[1]) >>> 0
+          if (rt !== 0) {
+            this.lo = Math.floor(rs / rt) >>> 0
+            this.hi = (rs % rt) >>> 0
+          }
+          break
+        }
+        case 'MFHI':
+          this.setReg(instr.args[0], this.hi)
+          break
+        case 'MFLO':
+          this.setReg(instr.args[0], this.lo)
+          break
+        case 'MTHI':
+          this.hi = this.getReg(instr.args[0]) | 0
+          break
+        case 'MTLO':
+          this.lo = this.getReg(instr.args[0]) | 0
+          break
+
+        // Load/Store
+        case 'LW': {
+          const addr = this.getMemAddress(instr.args[1])
+          const value = this.readMemory(addr, 4)
+          this.setReg(instr.args[0], value)
+          break
+        }
+        case 'LH': {
+          const addr = this.getMemAddress(instr.args[1])
+          const value = this.readMemory(addr, 2)
+          this.setReg(instr.args[0], value << 16 >> 16) // Sign extend
+          break
+        }
+        case 'LHU': {
+          const addr = this.getMemAddress(instr.args[1])
+          const value = this.readMemory(addr, 2)
+          this.setReg(instr.args[0], value)
+          break
+        }
+        case 'LB': {
+          const addr = this.getMemAddress(instr.args[1])
+          const value = this.readMemory(addr, 1)
+          this.setReg(instr.args[0], value << 24 >> 24) // Sign extend
+          break
+        }
+        case 'LBU': {
+          const addr = this.getMemAddress(instr.args[1])
+          const value = this.readMemory(addr, 1)
+          this.setReg(instr.args[0], value)
+          break
+        }
+        case 'SW': {
+          const addr = this.getMemAddress(instr.args[1])
+          const value = this.getReg(instr.args[0])
+          this.writeMemory(addr, value, 4)
+          break
+        }
+        case 'SH': {
+          const addr = this.getMemAddress(instr.args[1])
+          const value = this.getReg(instr.args[0])
+          this.writeMemory(addr, value, 2)
+          break
+        }
+        case 'SB': {
+          const addr = this.getMemAddress(instr.args[1])
+          const value = this.getReg(instr.args[0])
+          this.writeMemory(addr, value, 1)
+          break
+        }
+        case 'LUI': {
+          const imm = this.getImm(instr.args[1])
+          this.setReg(instr.args[0], (imm << 16) | 0)
+          break
+        }
+
+        // Jump & Branch
+        case 'BEQ': {
+          const rs = this.getReg(instr.args[0])
+          const rt = this.getReg(instr.args[1])
+          if (rs === rt) {
+            const offset = this.getImm(instr.args[2])
+            this.pc = (this.pc + (offset * 4)) | 0
+          }
+          break
+        }
+        case 'BNE': {
+          const rs = this.getReg(instr.args[0])
+          const rt = this.getReg(instr.args[1])
+          if (rs !== rt) {
+            const offset = this.getImm(instr.args[2])
+            this.pc = (this.pc + (offset * 4)) | 0
+          }
+          break
+        }
+        case 'BGEZ': {
+          const rs = this.getReg(instr.args[0])
+          if (rs >= 0) {
+            const offset = this.getImm(instr.args[1])
+            this.pc = (this.pc + (offset * 4)) | 0
+          }
+          break
+        }
+        case 'BGTZ': {
+          const rs = this.getReg(instr.args[0])
+          if (rs > 0) {
+            const offset = this.getImm(instr.args[1])
+            this.pc = (this.pc + (offset * 4)) | 0
+          }
+          break
+        }
+        case 'BLEZ': {
+          const rs = this.getReg(instr.args[0])
+          if (rs <= 0) {
+            const offset = this.getImm(instr.args[1])
+            this.pc = (this.pc + (offset * 4)) | 0
+          }
+          break
+        }
+        case 'BLTZ': {
+          const rs = this.getReg(instr.args[0])
+          if (rs < 0) {
+            const offset = this.getImm(instr.args[1])
+            this.pc = (this.pc + (offset * 4)) | 0
+          }
+          break
+        }
+        case 'J': {
+          const address = this.getImm(instr.args[0])
+          this.pc = ((this.pc & 0xf0000000) | (address << 2)) - 4
+          break
+        }
+        case 'JAL': {
+          this.registers['$ra'] = (this.pc + 4) | 0
+          const address = this.getImm(instr.args[0])
+          this.pc = ((this.pc & 0xf0000000) | (address << 2)) - 4
+          break
+        }
+        case 'JR': {
+          const addr = this.getReg(instr.args[0])
+          this.pc = addr - 4
+          break
+        }
+        case 'JALR': {
+          this.registers['$ra'] = (this.pc + 4) | 0
+          const addr = this.getReg(instr.args[0])
+          this.pc = addr - 4
+          break
+        }
+
+        // Pseudo-instructions
+        case 'NOP':
+          break
+        case 'MOVE': {
+          const rs = this.getReg(instr.args[1])
+          this.setReg(instr.args[0], rs)
+          break
+        }
+        case 'LI': {
+          const imm = this.getImm(instr.args[1])
+          this.setReg(instr.args[0], imm)
+          break
+        }
+        case 'LA': {
+          const addr = this.getImm(instr.args[1])
+          this.setReg(instr.args[0], addr)
+          break
+        }
+
+        // System
+        case 'SYSCALL':
+          this.handleSyscall()
+          break
+      }
+    } catch (error) {
+      throw new Error(`Error executing ${name}: ${error.message}`)
     }
   }
 
   handleSyscall() {
-    const code = this.registers['$v0']
+    const code = this.registers['$v0'] | 0
 
     switch (code) {
       case 1: // Print integer
-        this.console += this.registers['$a0']
+        this.console += (this.registers['$a0'] | 0)
         break
       case 4: // Print string
         // Read string from memory at $a0
-        let addr = this.registers['$a0']
+        let addr = this.registers['$a0'] >>> 0
         let str = ''
-        while (true) {
+        for (let i = 0; i < 1000; i++) {
           const byte = this.readMemory(addr, 1)
           if (byte === 0) break
           str += String.fromCharCode(byte)
@@ -451,7 +455,7 @@ export class MipsSimulator {
         this.halted = true
         break
       case 11: // Print character
-        this.console += String.fromCharCode(this.registers['$a0'])
+        this.console += String.fromCharCode(this.registers['$a0'] & 0xff)
         break
     }
   }
@@ -474,11 +478,11 @@ export class MipsSimulator {
   }
 
   getImm(arg) {
-    if (typeof arg === 'number') return arg
+    if (typeof arg === 'number') return arg | 0
     if (typeof arg === 'object') {
-      if (arg.type === 'immediate') return arg.value
+      if (arg.type === 'immediate') return arg.value | 0
       if (arg.type === 'label' && arg.address !== undefined) return arg.address
-      if (arg.value !== undefined) return arg.value
+      if (arg.value !== undefined) return arg.value | 0
     }
     return 0
   }
@@ -487,7 +491,7 @@ export class MipsSimulator {
     if (typeof arg === 'object' && arg.type === 'memory') {
       const offset = this.getImm(arg.offset)
       const base = this.getReg(arg.register)
-      return (base + offset) >>> 0
+      return ((base + offset) >>> 0)
     }
     return 0
   }
@@ -518,7 +522,7 @@ export class MipsSimulator {
       const mask = 0xffff << (offset * 8)
       word = (word & ~mask) | ((value & 0xffff) << (offset * 8))
     } else {
-      word = value
+      word = value >>> 0
     }
 
     this.memory[wordAddr] = word >>> 0
@@ -530,6 +534,8 @@ export class MipsSimulator {
       memory: this.getMemoryView(),
       console: this.console,
       pc: this.pc,
+      hi: this.hi,
+      lo: this.lo,
       instructionCount: this.instructionCount,
     }
   }

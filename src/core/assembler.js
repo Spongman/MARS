@@ -10,6 +10,7 @@ export class Assembler {
     this.source = source
     this.program = null
     this.machineCode = []
+    this.currentAddress = 0x00400000
   }
 
   assemble() {
@@ -39,6 +40,7 @@ export class Assembler {
 
   encodeInstruction(instr) {
     const name = instr.name
+    this.currentAddress = instr.address
 
     // Resolve labels in arguments
     const args = instr.args.map((arg) => {
@@ -130,12 +132,20 @@ export class Assembler {
       case 'MOVE':
         // move $rd, $rs -> addu $rd, $rs, $zero
         return this.encodeRType('ADDU', args, { opcode: 0, func: 0x21 })
-      case 'LI':
-        // li $rt, imm -> lui then ori (simplified)
-        return this.encodeIType('LUI', args, 0x0f)
-      case 'LA':
-        // la $rt, label -> lui then ori (simplified)
-        return this.encodeIType('LUI', args, 0x0f)
+      case 'LI': {
+        // li $rt, imm -> lui then ori
+        const rt = this.getRegisterNumber(args[0])
+        const imm = this.getImmediateValue(args[1])
+        // For now, just return the lower 16 bits via ORI
+        return (0x0d << 26) | (0 << 21) | (rt << 16) | (imm & 0xffff)
+      }
+      case 'LA': {
+        // la $rt, label -> lui then ori
+        const rt = this.getRegisterNumber(args[0])
+        const addr = this.getImmediateValue(args[1])
+        // For now, just return the lower 16 bits via ORI
+        return (0x0d << 26) | (0 << 21) | (rt << 16) | (addr & 0xffff)
+      }
       case 'SYSCALL':
         return 0x0000000c
       default:
@@ -305,8 +315,8 @@ export class Assembler {
   getBranchOffset(arg) {
     if (typeof arg === 'number') return arg
     if (typeof arg === 'object' && arg.address !== undefined) {
-      // Offset is relative to PC+4
-      return arg.address - (this.currentAddress + 4)
+      // Offset is relative to PC+4, in words (divide by 4)
+      return (arg.address - (this.currentAddress + 4)) >> 2
     }
     return 0
   }
