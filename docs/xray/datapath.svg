@@ -1,0 +1,199 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 1000 574" width="1000" height="574" data-diagram="datapath">
+<rect id="ground" x="0" y="0" width="1000" height="574" fill="#1e2128"/>
+<g id="blocks" inkscape:groupmode="layer" inkscape:label="blocks" fill="#3a3f4a" stroke="#8c92a0" stroke-width="1.5">
+<rect id="block-0" inkscape:label="block 0 PC" data-kind="block" data-block="0" data-shape="rect" x="120" y="353" width="39" height="41"/>
+<text data-kind="block-label" data-block="0" x="139.5" y="373.5" fill="#cdd0d7" font-size="12" text-anchor="middle" pointer-events="none">PC</text>
+<rect id="block-1" inkscape:label="block 1 INSTRUCTION MEMORY" data-kind="block" data-block="1" data-shape="rect" x="202" y="330" width="87" height="91"/>
+<text data-kind="block-label" data-block="1" x="245.5" y="375.5" fill="#cdd0d7" font-size="9" text-anchor="middle" pointer-events="none">INSTRUCTION MEMORY</text>
+<rect id="block-2" inkscape:label="block 2 REGISTERS" data-kind="block" data-block="2" data-shape="rect" x="426" y="294" width="95" height="133"/>
+<text data-kind="block-label" data-block="2" x="473.5" y="360.5" fill="#cdd0d7" font-size="11" text-anchor="middle" pointer-events="none">REGISTERS</text>
+<rect id="block-3" inkscape:label="block 3 DATA MEMORY" data-kind="block" data-block="3" data-shape="rect" x="723" y="324.3" width="88" height="91"/>
+<text data-kind="block-label" data-block="3" x="767" y="369.8" fill="#cdd0d7" font-size="10" text-anchor="middle" pointer-events="none">DATA MEMORY</text>
+<polygon id="block-4" inkscape:label="block 4 ALU" data-kind="block" data-block="4" data-shape="alu" points="605,297.5 669,331.7 669,377.3 605,411.5 605,368.2 624.2,354.5 605,340.8"/>
+<text data-kind="block-label" data-block="4" x="637" y="354.5" fill="#cdd0d7" font-size="15" text-anchor="middle" pointer-events="none">ALU</text>
+<polygon id="block-5" inkscape:label="block 5 ADD" data-kind="block" data-block="5" data-shape="alu" points="228,80 274,104.3 274,136.7 228,161 228,130.2 241.8,120.5 228,110.8"/>
+<text data-kind="block-label" data-block="5" x="251" y="120.5" fill="#cdd0d7" font-size="10" text-anchor="middle" pointer-events="none">ADD</text>
+<polygon id="block-6" inkscape:label="block 6 ADD" data-kind="block" data-block="6" data-shape="alu" points="662,102.2 708,126.2 708,158.2 662,182.2 662,151.8 675.8,142.2 662,132.6"/>
+<text data-kind="block-label" data-block="6" x="685" y="142.2" fill="#cdd0d7" font-size="10" text-anchor="middle" pointer-events="none">ADD</text>
+<ellipse id="block-7" inkscape:label="block 7 SHIFT LEFT 2" data-kind="block" data-block="7" data-shape="ellipse" cx="414.5" cy="76.5" rx="23.5" ry="25"/>
+<text data-kind="block-label" data-block="7" x="414.5" y="76.5" fill="#cdd0d7" font-size="8" text-anchor="middle" pointer-events="none">SHIFT LEFT 2</text>
+<ellipse id="block-8" inkscape:label="block 8 SHIFT LEFT 2" data-kind="block" data-block="8" data-shape="ellipse" cx="584.5" cy="155.5" rx="23.5" ry="25.5"/>
+<text data-kind="block-label" data-block="8" x="584.5" y="155.5" fill="#cdd0d7" font-size="8" text-anchor="middle" pointer-events="none">SHIFT LEFT 2</text>
+<ellipse id="block-9" inkscape:label="block 9 CONTROL" data-kind="block" data-block="9" data-shape="ellipse" cx="386.5" cy="230.5" rx="30.5" ry="51.5"/>
+<text data-kind="block-label" data-block="9" x="386.5" y="230.5" fill="#cdd0d7" font-size="9" text-anchor="middle" pointer-events="none">CONTROL</text>
+<ellipse id="block-10" inkscape:label="block 10 SIGN EXTEND" data-kind="block" data-block="10" data-shape="ellipse" cx="469.5" cy="467.5" rx="30.5" ry="33"/>
+<text data-kind="block-label" data-block="10" x="469.5" y="467.5" fill="#cdd0d7" font-size="8" text-anchor="middle" pointer-events="none">SIGN EXTEND</text>
+<ellipse id="block-11" inkscape:label="block 11 ALU CONTROL" data-kind="block" data-block="11" data-shape="ellipse" cx="592" cy="487" rx="31" ry="33"/>
+<text data-kind="block-label" data-block="11" x="592" y="487" fill="#cdd0d7" font-size="8" text-anchor="middle" pointer-events="none">ALU CONTROL</text>
+<rect id="block-12" inkscape:label="block 12 M U X" data-kind="block" data-block="12" data-shape="pill" x="770" y="97.5" width="19" height="46" rx="9.5"/>
+<text data-kind="block-label" data-block="12" x="779.5" y="120.5" fill="#cdd0d7" font-size="7" text-anchor="middle" pointer-events="none">M U X</text>
+<rect id="block-13" inkscape:label="block 13 M U X" data-kind="block" data-block="13" data-shape="pill" x="814" y="97.5" width="19" height="46" rx="9.5"/>
+<text data-kind="block-label" data-block="13" x="823.5" y="120.5" fill="#cdd0d7" font-size="7" text-anchor="middle" pointer-events="none">M U X</text>
+<rect id="block-14" inkscape:label="block 14 M U X" data-kind="block" data-block="14" data-shape="pill" x="847" y="341" width="19" height="45" rx="9.5"/>
+<text data-kind="block-label" data-block="14" x="856.5" y="363.5" fill="#cdd0d7" font-size="7" text-anchor="middle" pointer-events="none">M U X</text>
+<rect id="block-15" inkscape:label="block 15 M U X" data-kind="block" data-block="15" data-shape="pill" x="372" y="364.5" width="19" height="46" rx="9.5"/>
+<text data-kind="block-label" data-block="15" x="381.5" y="387.5" fill="#cdd0d7" font-size="7" text-anchor="middle" pointer-events="none">M U X</text>
+<rect id="block-16" inkscape:label="block 16 M U X" data-kind="block" data-block="16" data-shape="pill" x="557" y="364.5" width="19" height="46" rx="9.5"/>
+<text data-kind="block-label" data-block="16" x="566.5" y="387.5" fill="#cdd0d7" font-size="7" text-anchor="middle" pointer-events="none">M U X</text>
+<polygon id="block-17" inkscape:label="block 17 and" data-kind="block" data-block="17" data-shape="and" data-facing="right" points="750,181.8 753,181.8 755.5,182.1 758,182.8 760.2,184 762.2,185.6 763.8,187.6 765,189.9 765.8,192.3 766,194.8 765.8,197.4 765,199.8 763.8,202.1 762.2,204 760.2,205.6 758,206.8 755.5,207.6 753,207.8 750,207.8"/>
+</g>
+<g id="wires" inkscape:groupmode="layer" inkscape:label="wires" stroke="#9aa0ad" stroke-width="2.5">
+<line id="wire-0" inkscape:label="wire 0 *Program_counter" data-kind="wire" data-wire="0" data-name="*Program_counter" data-run="horizontal" x1="139" y1="374.5" x2="245" y2="374.5"><title>0 *Program_counter</title></line>
+<line id="wire-1" inkscape:label="wire 1 *nodeADD1input1A" data-kind="wire" data-wire="1" data-name="*nodeADD1input1A" data-run="vertical" x1="177.5" y1="374.5" x2="177.5" y2="94"><title>1 *nodeADD1input1A</title></line>
+<line id="wire-2" inkscape:label="wire 2 *ADD1input1B" data-kind="wire" data-wire="2" data-name="*ADD1input1B" data-run="horizontal" x1="177.5" y1="95.5" x2="242.5" y2="95.5"><title>2 *ADD1input1B</title></line>
+<line id="wire-3" inkscape:label="wire 3 *ADDA1input2" data-kind="wire" data-wire="3" data-name="*ADDA1input2" data-run="horizontal" x1="177.5" y1="145.5" x2="242.5" y2="145.5"><title>3 *ADDA1input2</title></line>
+<line id="wire-4" inkscape:label="wire 4 outputDATAMEM1" data-kind="wire" data-wire="4" data-name="outputDATAMEM1" data-run="horizontal" x1="400" y1="415.5" x2="473" y2="415.5"><title>4 outputDATAMEM1</title></line>
+<line id="wire-5" inkscape:label="wire 5 *node1ADD2" data-kind="wire" data-wire="5" data-name="*node1ADD2" data-run="horizontal" x1="250.7" y1="120.5" x2="503.8" y2="120.5"><title>5 *node1ADD2</title></line>
+<line id="wire-6" inkscape:label="wire 6 *instruction_Memory" data-kind="wire" data-wire="6" data-name="*instruction_Memory" data-run="horizontal" x1="192" y1="374.5" x2="245" y2="374.5"><title>6 *instruction_Memory</title></line>
+<line id="wire-8" inkscape:label="wire 8 nodeIM" data-kind="wire" data-wire="8" data-name="nodeIM" data-run="horizontal" x1="225.7" y1="374.5" x2="304" y2="374.5"><title>8 nodeIM</title></line>
+<line id="wire-9" inkscape:label="wire 9 nodeSHIFTLEFT1" data-kind="wire" data-wire="9" data-name="nodeSHIFTLEFT1" data-run="vertical" x1="304" y1="374.5" x2="304" y2="76.5"><title>9 nodeSHIFTLEFT1</title></line>
+<line id="wire-10" inkscape:label="wire 10 *nodeIM2" data-kind="wire" data-wire="10" data-name="*nodeIM2" data-run="horizontal" x1="304" y1="374.5" x2="330.5" y2="374.5"><title>10 *nodeIM2</title></line>
+<line id="wire-11" inkscape:label="wire 11 *SHIFTLEFT1" data-kind="wire" data-wire="11" data-name="*SHIFTLEFT1" data-run="horizontal" x1="304" y1="76.5" x2="414.5" y2="76.5"><title>11 *SHIFTLEFT1</title></line>
+<line id="wire-12" inkscape:label="wire 12 *nodeMUXC" data-kind="wire" data-wire="12" data-name="*nodeMUXC" data-run="horizontal" x1="414.5" y1="76.5" x2="498.5" y2="76.5"><title>12 *nodeMUXC</title></line>
+<line id="wire-13" inkscape:label="wire 13 *nodeMUXC1" data-kind="wire" data-wire="13" data-name="*nodeMUXC1" data-run="vertical" x1="498.5" y1="122" x2="498.5" y2="75"><title>13 *nodeMUXC1</title></line>
+<line id="wire-14" inkscape:label="wire 14 node2ADD2" data-kind="wire" data-wire="14" data-name="node2ADD2" data-run="horizontal" x1="497" y1="120.5" x2="606.3" y2="120.5"><title>14 node2ADD2</title></line>
+<line id="wire-15" inkscape:label="wire 15 *nodeMUXB" data-kind="wire" data-wire="15" data-name="*nodeMUXB" data-run="vertical" x1="601.5" y1="122" x2="601.5" y2="92.5"><title>15 *nodeMUXB</title></line>
+<line id="wire-16" inkscape:label="wire 16 *ADD2input1" data-kind="wire" data-wire="16" data-name="*ADD2input1" data-run="horizontal" x1="600" y1="120.5" x2="679.5" y2="120.5"><title>16 *ADD2input1</title></line>
+<line id="wire-17" inkscape:label="wire 17 *MUXB" data-kind="wire" data-wire="17" data-name="*MUXB" data-run="horizontal" x1="602" y1="92.5" x2="740.5" y2="92.5"><title>17 *MUXB</title></line>
+<line id="wire-17" inkscape:label="wire 17 *MUXB" data-kind="wire" data-wire="17" data-name="*MUXB" data-run="vertical" x1="740.5" y1="92.5" x2="740.5" y2="107.3"><title>17 *MUXB</title></line>
+<line id="wire-17" inkscape:label="wire 17 *MUXB" data-kind="wire" data-wire="17" data-name="*MUXB" data-run="horizontal" x1="740.5" y1="107.3" x2="781.5" y2="107.3"><title>17 *MUXB</title></line>
+<line id="wire-18" inkscape:label="wire 18 *nodeMUXC1" data-kind="wire" data-wire="18" data-name="*nodeMUXC1" data-run="horizontal" x1="497" y1="76.5" x2="800.5" y2="76.5"><title>18 *nodeMUXC1</title></line>
+<line id="wire-19" inkscape:label="wire 19 *nodeREG2" data-kind="wire" data-wire="19" data-name="*nodeREG2" data-run="vertical" x1="330.5" y1="381" x2="330.5" y2="357"><title>19 *nodeREG2</title></line>
+<line id="wire-20" inkscape:label="wire 20 *nodeMUXA1" data-kind="wire" data-wire="20" data-name="*nodeMUXA1" data-run="vertical" x1="330.5" y1="378" x2="330.5" y2="404.8"><title>20 *nodeMUXA1</title></line>
+<line id="wire-21" inkscape:label="wire 21 MUXA2" data-kind="wire" data-wire="21" data-name="MUXA2" data-run="horizontal" x1="329" y1="400.5" x2="381.5" y2="400.5"><title>21 MUXA2</title></line>
+<line id="wire-22" inkscape:label="wire 22 *nodeSIGN_EXT" data-kind="wire" data-wire="22" data-name="*nodeSIGN_EXT" data-run="vertical" x1="330.5" y1="399" x2="330.5" y2="467.5"><title>22 *nodeSIGN_EXT</title></line>
+<line id="wire-23" inkscape:label="wire 23 *SIGN_EXT" data-kind="wire" data-wire="23" data-name="*SIGN_EXT" data-run="horizontal" x1="330.5" y1="467.5" x2="469.5" y2="467.5"><title>23 *SIGN_EXT</title></line>
+<line id="wire-24" inkscape:label="wire 24 *nodeREG2A" data-kind="wire" data-wire="24" data-name="*nodeREG2A" data-run="vertical" x1="330.5" y1="360" x2="330.5" y2="334"><title>24 *nodeREG2A</title></line>
+<line id="wire-26" inkscape:label="wire 26 *nodeREGB" data-kind="wire" data-wire="26" data-name="*nodeREGB" data-run="horizontal" x1="329" y1="359.5" x2="353.8" y2="359.5"><title>26 *nodeREGB</title></line>
+<line id="wire-27" inkscape:label="wire 27 *nodeMUXA" data-kind="wire" data-wire="27" data-name="*nodeMUXA" data-run="vertical" x1="355.5" y1="359" x2="355.5" y2="372.5"><title>27 *nodeMUXA</title></line>
+<line id="wire-28" inkscape:label="wire 28 *nodeMUXA" data-kind="wire" data-wire="28" data-name="*nodeMUXA" data-run="horizontal" x1="355.5" y1="372.5" x2="381.5" y2="372.5"><title>28 *nodeMUXA</title></line>
+<line id="wire-29" inkscape:label="wire 29 *REGB" data-kind="wire" data-wire="29" data-name="*REGB" data-run="horizontal" x1="348" y1="359.5" x2="473" y2="359.5"><title>29 *REGB</title></line>
+<line id="wire-30" inkscape:label="wire 30 *nodeCTRL2" data-kind="wire" data-wire="30" data-name="*nodeCTRL2" data-run="vertical" x1="330.5" y1="337" x2="330.5" y2="231.5"><title>30 *nodeCTRL2</title></line>
+<line id="wire-31" inkscape:label="wire 31 *REGinput1" data-kind="wire" data-wire="31" data-name="*REGinput1" data-run="horizontal" x1="328" y1="336.5" x2="473" y2="336.5"><title>31 *REGinput1</title></line>
+<line id="wire-32" inkscape:label="wire 32 *CTRL" data-kind="wire" data-wire="32" data-name="*CTRL" data-run="horizontal" x1="330.5" y1="231.5" x2="386.5" y2="231.5"><title>32 *CTRL</title></line>
+<line id="wire-33" inkscape:label="wire 33 *nodeALU_CTRL" data-kind="wire" data-wire="33" data-name="*nodeALU_CTRL" data-run="vertical" x1="330.5" y1="466.5" x2="330.5" y2="506"><title>33 *nodeALU_CTRL</title></line>
+<line id="wire-34" inkscape:label="wire 34 *ALU_CTRL" data-kind="wire" data-wire="34" data-name="*ALU_CTRL" data-run="horizontal" x1="329" y1="504.5" x2="592" y2="504.5"><title>34 *ALU_CTRL</title></line>
+<line id="wire-35" inkscape:label="wire 35 *nodeALUcontrol1" data-kind="wire" data-wire="35" data-name="*nodeALUcontrol1" data-run="horizontal" x1="590.5" y1="486.5" x2="651.5" y2="486.5"><title>35 *nodeALUcontrol1</title></line>
+<line id="wire-36" inkscape:label="wire 36 *nodeALUcontrol2" data-kind="wire" data-wire="36" data-name="*nodeALUcontrol2" data-run="vertical" x1="651.5" y1="486.5" x2="651.5" y2="354.5"><title>36 *nodeALUcontrol2</title></line>
+<line id="wire-37" inkscape:label="wire 37 *nodeSIGN_EXT" data-kind="wire" data-wire="37" data-name="*nodeSIGN_EXT" data-run="horizontal" x1="469.5" y1="467.5" x2="533.5" y2="467.5"><title>37 *nodeSIGN_EXT</title></line>
+<line id="wire-38" inkscape:label="wire 38 *nodeSHIFT_LEFT2" data-kind="wire" data-wire="38" data-name="*nodeSHIFT_LEFT2" data-run="vertical" x1="533.5" y1="467.5" x2="533.5" y2="380.5"><title>38 *nodeSHIFT_LEFT2</title></line>
+<line id="wire-39" inkscape:label="wire 39 *nodeSHIFT_LEFT2A" data-kind="wire" data-wire="39" data-name="*nodeSHIFT_LEFT2A" data-run="vertical" x1="533.5" y1="380.5" x2="533.5" y2="153"><title>39 *nodeSHIFT_LEFT2A</title></line>
+<line id="wire-40" inkscape:label="wire 40 *SHIFT_LEFT2" data-kind="wire" data-wire="40" data-name="*SHIFT_LEFT2" data-run="horizontal" x1="535" y1="154.5" x2="584.5" y2="154.5"><title>40 *SHIFT_LEFT2</title></line>
+<line id="wire-41" inkscape:label="wire 41 ADD2" data-kind="wire" data-wire="41" data-name="ADD2" data-run="horizontal" x1="584.5" y1="171.5" x2="672" y2="171.5"><title>41 ADD2</title></line>
+<line id="wire-42" inkscape:label="wire 42 *nodeMUXC2" data-kind="wire" data-wire="42" data-name="*nodeMUXC2" data-run="vertical" x1="800.5" y1="75" x2="800.5" y2="107.3"><title>42 *nodeMUXC2</title></line>
+<line id="wire-43" inkscape:label="wire 43 *nodeMUXC3" data-kind="wire" data-wire="43" data-name="*nodeMUXC3" data-run="horizontal" x1="800.5" y1="107.3" x2="823.5" y2="107.3"><title>43 *nodeMUXC3</title></line>
+<line id="wire-44" inkscape:label="wire 44 *SIG_CTRL_MUXA1" data-kind="wire" data-wire="44" data-name="*SIG_CTRL_MUXA1" data-run="horizontal" x1="386.5" y1="268.5" x2="341" y2="268.5"><title>44 *SIG_CTRL_MUXA1</title></line>
+<line id="wire-45" inkscape:label="wire 45 *SIG_CTRL_AND1" data-kind="wire" data-wire="45" data-name="*SIG_CTRL_AND1" data-run="horizontal" x1="386.5" y1="188.5" x2="757" y2="188.5"><title>45 *SIG_CTRL_AND1</title></line>
+<line id="wire-46" inkscape:label="wire 46 *SIG_CTRL_MUXB" data-kind="wire" data-wire="46" data-name="*SIG_CTRL_MUXB" data-run="horizontal" x1="386.5" y1="210.5" x2="779.5" y2="210.5"><title>46 *SIG_CTRL_MUXB</title></line>
+<line id="wire-47" inkscape:label="wire 47 *SIG_CTRL_MEMA1" data-kind="wire" data-wire="47" data-name="*SIG_CTRL_MEMA1" data-run="horizontal" x1="386.5" y1="221.5" x2="942" y2="221.5"><title>47 *SIG_CTRL_MEMA1</title></line>
+<line id="wire-48" inkscape:label="wire 48 *SIG_CTRL_MUXE" data-kind="wire" data-wire="48" data-name="*SIG_CTRL_MUXE" data-run="horizontal" x1="386.5" y1="236.5" x2="859" y2="236.5"><title>48 *SIG_CTRL_MUXE</title></line>
+<line id="wire-49" inkscape:label="wire 49 *SIG_CTRL_DATAMEMB1" data-kind="wire" data-wire="49" data-name="*SIG_CTRL_DATAMEMB1" data-run="horizontal" x1="386.5" y1="244.5" x2="765" y2="244.5"><title>49 *SIG_CTRL_DATAMEMB1</title></line>
+<line id="wire-50" inkscape:label="wire 50 *SIG_CTRL_ALUCRTL" data-kind="wire" data-wire="50" data-name="*SIG_CTRL_ALUCRTL" data-run="horizontal" x1="386.5" y1="256.5" x2="594" y2="256.5"><title>50 *SIG_CTRL_ALUCRTL</title></line>
+<line id="wire-51" inkscape:label="wire 51 *SIG_CTRL_MUXD" data-kind="wire" data-wire="51" data-name="*SIG_CTRL_MUXD" data-run="horizontal" x1="386.5" y1="264.5" x2="568" y2="264.5"><title>51 *SIG_CTRL_MUXD</title></line>
+<line id="wire-52" inkscape:label="wire 52 *SIG_CTRL_REG" data-kind="wire" data-wire="52" data-name="*SIG_CTRL_REG" data-run="horizontal" x1="386.5" y1="276.5" x2="475" y2="276.5"><title>52 *SIG_CTRL_REG</title></line>
+<line id="wire-53" inkscape:label="wire 53 *SIG_CTRL_MUXA2" data-kind="wire" data-wire="53" data-name="*SIG_CTRL_MUXA2" data-run="vertical" x1="342.5" y1="267" x2="342.5" y2="443"><title>53 *SIG_CTRL_MUXA2</title></line>
+<line id="wire-54" inkscape:label="wire 54 *SIG_CTRL_MUXA3" data-kind="wire" data-wire="54" data-name="*SIG_CTRL_MUXA3" data-run="horizontal" x1="341" y1="441.5" x2="385" y2="441.5"><title>54 *SIG_CTRL_MUXA3</title></line>
+<line id="wire-55" inkscape:label="wire 55 *SIG_CTRL_MUXA4" data-kind="wire" data-wire="55" data-name="*SIG_CTRL_MUXA4" data-run="vertical" x1="383.5" y1="443" x2="383.5" y2="387"><title>55 *SIG_CTRL_MUXA4</title></line>
+<line id="wire-56" inkscape:label="wire 56 *REG3" data-kind="wire" data-wire="56" data-name="*REG3" data-run="horizontal" x1="382" y1="388.5" x2="473" y2="388.5"><title>56 *REG3</title></line>
+<line id="wire-57" inkscape:label="wire 57 *SIG_CTRL_REG2" data-kind="wire" data-wire="57" data-name="*SIG_CTRL_REG2" data-run="vertical" x1="473.5" y1="275" x2="473.5" y2="366.8"><title>57 *SIG_CTRL_REG2</title></line>
+<line id="wire-58" inkscape:label="wire 58 *SIG_CTRL_MUXE2" data-kind="wire" data-wire="58" data-name="*SIG_CTRL_MUXE2" data-run="vertical" x1="857.5" y1="235" x2="857.5" y2="363.5"><title>58 *SIG_CTRL_MUXE2</title></line>
+<line id="wire-59" inkscape:label="wire 59 *SIG_CTRL_MUXD2" data-kind="wire" data-wire="59" data-name="*SIG_CTRL_MUXD2" data-run="vertical" x1="566.5" y1="264.5" x2="566.5" y2="387.5"><title>59 *SIG_CTRL_MUXD2</title></line>
+<line id="wire-60" inkscape:label="wire 60 *SIG_CTRL_ALUCRTL2" data-kind="wire" data-wire="60" data-name="*SIG_CTRL_ALUCRTL2" data-run="vertical" x1="592.5" y1="255" x2="592.5" y2="487"><title>60 *SIG_CTRL_ALUCRTL2</title></line>
+<line id="wire-61" inkscape:label="wire 61 *SIG_CTRL_DATAMEMB2" data-kind="wire" data-wire="61" data-name="*SIG_CTRL_DATAMEMB2" data-run="vertical" x1="763.5" y1="244.5" x2="763.5" y2="362"><title>61 *SIG_CTRL_DATAMEMB2</title></line>
+<line id="wire-62" inkscape:label="wire 62 *SIG_CTRL_MEMA2" data-kind="wire" data-wire="62" data-name="*SIG_CTRL_MEMA2" data-run="vertical" x1="940.5" y1="220" x2="940.5" y2="459"><title>62 *SIG_CTRL_MEMA2</title></line>
+<line id="wire-63" inkscape:label="wire 63 *SIG_CTRL_MEMA3" data-kind="wire" data-wire="63" data-name="*SIG_CTRL_MEMA3" data-run="horizontal" x1="942" y1="457.5" x2="773" y2="457.5"><title>63 *SIG_CTRL_MEMA3</title></line>
+<line id="wire-64" inkscape:label="wire 64 *SIG_CTRL_MEMA3" data-kind="wire" data-wire="64" data-name="*SIG_CTRL_MEMA3" data-run="vertical" x1="774.5" y1="459" x2="774.5" y2="362"><title>64 *SIG_CTRL_MEMA3</title></line>
+<line id="wire-65" inkscape:label="wire 65 *REG_OUTPUT1" data-kind="wire" data-wire="65" data-name="*REG_OUTPUT1" data-run="horizontal" x1="473" y1="321.5" x2="627" y2="321.5"><title>65 *REG_OUTPUT1</title></line>
+<line id="wire-66" inkscape:label="wire 66 *REG_OUTPUT2" data-kind="wire" data-wire="66" data-name="*REG_OUTPUT2" data-run="horizontal" x1="479" y1="398.5" x2="544" y2="398.5"><title>66 *REG_OUTPUT2</title></line>
+<line id="wire-67" inkscape:label="wire 67 *REG_OUTPUT2A" data-kind="wire" data-wire="67" data-name="*REG_OUTPUT2A" data-run="horizontal" x1="533.5" y1="380.5" x2="566.5" y2="380.5"><title>67 *REG_OUTPUT2A</title></line>
+<line id="wire-68" inkscape:label="wire 68 nodeMEMDATAINPUT1" data-kind="wire" data-wire="68" data-name="nodeMEMDATAINPUT1" data-run="vertical" x1="544" y1="398.5" x2="544" y2="438.5"><title>68 nodeMEMDATAINPUT1</title></line>
+<line id="wire-69" inkscape:label="wire 69 nodeMEMDATAINPUT2" data-kind="wire" data-wire="69" data-name="nodeMEMDATAINPUT2" data-run="horizontal" x1="544" y1="438.5" x2="681.5" y2="438.5"><title>69 nodeMEMDATAINPUT2</title></line>
+<line id="wire-70" inkscape:label="wire 70 nodeMEMDATAINPUT2" data-kind="wire" data-wire="70" data-name="nodeMEMDATAINPUT2" data-run="vertical" x1="681.5" y1="438.5" x2="681.5" y2="388.5"><title>70 nodeMEMDATAINPUT2</title></line>
+<line id="wire-71" inkscape:label="wire 71 nodeMEMDATAINPUT2" data-kind="wire" data-wire="71" data-name="nodeMEMDATAINPUT2" data-run="horizontal" x1="681.5" y1="388.5" x2="766.5" y2="388.5"><title>71 nodeMEMDATAINPUT2</title></line>
+<line id="wire-72" inkscape:label="wire 72 *MUXC" data-kind="wire" data-wire="72" data-name="*MUXC" data-run="horizontal" x1="686" y1="134.5" x2="779.5" y2="134.5"><title>72 *MUXC</title></line>
+<line id="wire-73" inkscape:label="wire 73 nodeMUXD" data-kind="wire" data-wire="73" data-name="nodeMUXD" data-run="horizontal" x1="544" y1="398.5" x2="565.5" y2="398.5"><title>73 nodeMUXD</title></line>
+<line id="wire-74" inkscape:label="wire 74 ALUinput2" data-kind="wire" data-wire="74" data-name="ALUinput2" data-run="horizontal" x1="566.5" y1="389.5" x2="625.5" y2="389.5"><title>74 ALUinput2</title></line>
+<line id="wire-75" inkscape:label="wire 75 nodeMEMDATAINPUT1A" data-kind="wire" data-wire="75" data-name="nodeMEMDATAINPUT1A" data-run="horizontal" x1="638.5" y1="365.5" x2="743" y2="365.5"><title>75 nodeMEMDATAINPUT1A</title></line>
+<line id="wire-76" inkscape:label="wire 76 *nodeMUXEA1" data-kind="wire" data-wire="76" data-name="*nodeMUXEA1" data-run="vertical" x1="693.5" y1="364" x2="693.5" y2="431.5"><title>76 *nodeMUXEA1</title></line>
+<line id="wire-78" inkscape:label="wire 78 *nodeMUXEA1" data-kind="wire" data-wire="78" data-name="*nodeMUXEA1" data-run="horizontal" x1="693.5" y1="431.5" x2="828" y2="431.5"><title>78 *nodeMUXEA1</title></line>
+<line id="wire-79" inkscape:label="wire 79 ZERO_ALU1" data-kind="wire" data-wire="79" data-name="ZERO_ALU1" data-run="horizontal" x1="637" y1="341.5" x2="693" y2="341.5"><title>79 ZERO_ALU1</title></line>
+<line id="wire-80" inkscape:label="wire 80 nodeMUXG1B" data-kind="wire" data-wire="80" data-name="nodeMUXG1B" data-run="vertical" x1="826.5" y1="433" x2="826.5" y2="372.5"><title>80 nodeMUXG1B</title></line>
+<line id="wire-81" inkscape:label="wire 81 nodeMUXG1C" data-kind="wire" data-wire="81" data-name="nodeMUXG1C" data-run="horizontal" x1="826" y1="372.5" x2="857.5" y2="372.5"><title>81 nodeMUXG1C</title></line>
+<line id="wire-82" inkscape:label="wire 82 ZERO_ALU1" data-kind="wire" data-wire="82" data-name="ZERO_ALU1" data-run="vertical" x1="691.5" y1="343" x2="691.5" y2="200"><title>82 ZERO_ALU1</title></line>
+<line id="wire-83" inkscape:label="wire 83 ZERO_ALU1" data-kind="wire" data-wire="83" data-name="ZERO_ALU1" data-run="horizontal" x1="690" y1="201.5" x2="757" y2="201.5"><title>83 ZERO_ALU1</title></line>
+<line id="wire-84" inkscape:label="wire 84 *AND_MUXC1" data-kind="wire" data-wire="84" data-name="*AND_MUXC1" data-run="horizontal" x1="757.5" y1="194.5" x2="824.5" y2="194.5"><title>84 *AND_MUXC1</title></line>
+<line id="wire-85" inkscape:label="wire 85 *AND_MUXC2" data-kind="wire" data-wire="85" data-name="*AND_MUXC2" data-run="vertical" x1="824.5" y1="194.5" x2="824.5" y2="120"><title>85 *AND_MUXC2</title></line>
+<line id="wire-86" inkscape:label="wire 86 *SIG_CTRL_MUXB2" data-kind="wire" data-wire="86" data-name="*SIG_CTRL_MUXB2" data-run="vertical" x1="779.5" y1="210.5" x2="779.5" y2="121.5"><title>86 *SIG_CTRL_MUXB2</title></line>
+<line id="wire-87" inkscape:label="wire 87 *MUXCinput2" data-kind="wire" data-wire="87" data-name="*MUXCinput2" data-run="horizontal" x1="779.5" y1="135.5" x2="823.5" y2="135.5"><title>87 *MUXCinput2</title></line>
+<line id="wire-88" inkscape:label="wire 88 *PCinput1" data-kind="wire" data-wire="88" data-name="*PCinput1" data-run="horizontal" x1="823" y1="121.5" x2="848" y2="121.5"><title>88 *PCinput1</title></line>
+<line id="wire-89" inkscape:label="wire 89 *PCinput2" data-kind="wire" data-wire="89" data-name="*PCinput2" data-run="vertical" x1="846.5" y1="123" x2="846.5" y2="49"><title>89 *PCinput2</title></line>
+<line id="wire-90" inkscape:label="wire 90 *PCinput3" data-kind="wire" data-wire="90" data-name="*PCinput3" data-run="horizontal" x1="848" y1="50.5" x2="85" y2="50.5"><title>90 *PCinput3</title></line>
+<line id="wire-91" inkscape:label="wire 91 *PCinput4" data-kind="wire" data-wire="91" data-name="*PCinput4" data-run="vertical" x1="86.5" y1="49" x2="86.5" y2="374.5"><title>91 *PCinput4</title></line>
+<line id="wire-92" inkscape:label="wire 92 *PCinput5" data-kind="wire" data-wire="92" data-name="*PCinput5" data-run="horizontal" x1="86.5" y1="374.5" x2="139" y2="374.5"><title>92 *PCinput5</title></line>
+<line id="wire-93" inkscape:label="wire 93 outputDATAMEM1" data-kind="wire" data-wire="93" data-name="outputDATAMEM1" data-run="horizontal" x1="766.5" y1="355.5" x2="856.5" y2="355.5"><title>93 outputDATAMEM1</title></line>
+<line id="wire-94" inkscape:label="wire 94 *outputMUXE1" data-kind="wire" data-wire="94" data-name="*outputMUXE1" data-run="horizontal" x1="856.5" y1="366.5" x2="898" y2="366.5"><title>94 *outputMUXE1</title></line>
+<line id="wire-95" inkscape:label="wire 95 outputDATAMEM1" data-kind="wire" data-wire="95" data-name="outputDATAMEM1" data-run="vertical" x1="896.5" y1="365" x2="896.5" y2="525"><title>95 outputDATAMEM1</title></line>
+<line id="wire-96" inkscape:label="wire 96 outputDATAMEM1" data-kind="wire" data-wire="96" data-name="outputDATAMEM1" data-run="horizontal" x1="898" y1="523.5" x2="400" y2="523.5"><title>96 outputDATAMEM1</title></line>
+<line id="wire-97" inkscape:label="wire 97 outputDATAMEM1" data-kind="wire" data-wire="97" data-name="outputDATAMEM1" data-run="vertical" x1="401.5" y1="525" x2="401.5" y2="414"><title>97 outputDATAMEM1</title></line>
+</g>
+<g id="captions" inkscape:groupmode="layer" inkscape:label="captions" fill="#cdd0d7">
+</g>
+<g id="derived" inkscape:groupmode="layer" inkscape:label="derived (not read back)" pointer-events="none">
+<circle fill="#ffffff" cx="330.5" cy="336.5" r="3"/>
+<circle fill="#ffffff" cx="330.5" cy="359.5" r="3"/>
+<circle fill="#ffffff" cx="330.5" cy="400.5" r="3"/>
+<circle fill="#ffffff" cx="330.5" cy="467.5" r="3"/>
+<circle fill="#ffffff" cx="498.5" cy="76.5" r="3"/>
+<circle fill="#ffffff" cx="498.5" cy="120.5" r="3"/>
+<circle fill="#ffffff" cx="533.5" cy="398.5" r="3"/>
+<circle fill="#ffffff" cx="601.5" cy="120.5" r="3"/>
+<circle fill="#ffffff" cx="693.5" cy="365.5" r="3"/>
+<polygon fill="#9aa0ad" points="202,374.5 193,378.5 193,370.5"/>
+<polygon fill="#9aa0ad" points="228.5,95.5 219.5,99.5 219.5,91.5"/>
+<polygon fill="#9aa0ad" points="228.5,145.5 219.5,149.5 219.5,141.5"/>
+<polygon fill="#9aa0ad" points="426,415.5 417,419.5 417,411.5"/>
+<polygon fill="#9aa0ad" points="391.5,76.5 382.5,80.5 382.5,72.5"/>
+<polygon fill="#9aa0ad" points="495.5,76.5 486.5,80.5 486.5,72.5"/>
+<polygon fill="#9aa0ad" points="498.5,79.5 494.5,88.5 502.5,88.5"/>
+<polygon fill="#9aa0ad" points="662.5,120.5 653.5,124.5 653.5,116.5"/>
+<polygon fill="#9aa0ad" points="770.5,107.3 761.5,111.3 761.5,103.3"/>
+<polygon fill="#9aa0ad" points="330.5,362.5 326.5,371.5 334.5,371.5"/>
+<polygon fill="#9aa0ad" points="330.5,397.5 334.5,388.5 326.5,388.5"/>
+<polygon fill="#9aa0ad" points="372.5,400.5 363.5,404.5 363.5,396.5"/>
+<polygon fill="#9aa0ad" points="330.5,464.5 334.5,455.5 326.5,455.5"/>
+<polygon fill="#9aa0ad" points="439.5,467.5 430.5,471.5 430.5,463.5"/>
+<polygon fill="#9aa0ad" points="330.5,339.5 326.5,348.5 334.5,348.5"/>
+<polygon fill="#9aa0ad" points="372.5,372.5 363.5,376.5 363.5,368.5"/>
+<polygon fill="#9aa0ad" points="426,359.5 417,363.5 417,355.5"/>
+<polygon fill="#9aa0ad" points="426,336.5 417,340.5 417,332.5"/>
+<polygon fill="#9aa0ad" points="356.5,231.5 347.5,235.5 347.5,227.5"/>
+<polygon fill="#9aa0ad" points="566,504.5 557,508.5 557,500.5"/>
+<polygon fill="#9aa0ad" points="651.5,386.5 647.5,395.5 655.5,395.5"/>
+<polygon fill="#9aa0ad" points="561.5,154.5 552.5,158.5 552.5,150.5"/>
+<polygon fill="#9aa0ad" points="662,171.5 653,175.5 653,167.5"/>
+<polygon fill="#9aa0ad" points="814.5,107.3 805.5,111.3 805.5,103.3"/>
+<polygon fill="#9aa0ad" points="750,188.5 741,192.5 741,184.5"/>
+<polygon fill="#9aa0ad" points="383.5,410 379.5,419 387.5,419"/>
+<polygon fill="#9aa0ad" points="426,388.5 417,392.5 417,384.5"/>
+<polygon fill="#9aa0ad" points="473.5,294.8 477.5,285.8 469.5,285.8"/>
+<polygon fill="#9aa0ad" points="857.5,341.5 861.5,332.5 853.5,332.5"/>
+<polygon fill="#9aa0ad" points="566.5,364.5 570.5,355.5 562.5,355.5"/>
+<polygon fill="#9aa0ad" points="592.5,455 596.5,446 588.5,446"/>
+<polygon fill="#9aa0ad" points="763.5,325 767.5,316 759.5,316"/>
+<polygon fill="#9aa0ad" points="774.5,415 770.5,424 778.5,424"/>
+<polygon fill="#9aa0ad" points="605,321.5 596,325.5 596,317.5"/>
+<polygon fill="#9aa0ad" points="557.5,380.5 548.5,384.5 548.5,376.5"/>
+<polygon fill="#9aa0ad" points="723.5,388.5 714.5,392.5 714.5,384.5"/>
+<polygon fill="#9aa0ad" points="770.5,134.5 761.5,138.5 761.5,130.5"/>
+<polygon fill="#9aa0ad" points="557.5,398.5 548.5,402.5 548.5,394.5"/>
+<polygon fill="#9aa0ad" points="605.5,389.5 596.5,393.5 596.5,385.5"/>
+<polygon fill="#9aa0ad" points="723,365.5 714,369.5 714,361.5"/>
+<polygon fill="#9aa0ad" points="847.5,372.5 838.5,376.5 838.5,368.5"/>
+<polygon fill="#9aa0ad" points="750,201.5 741,205.5 741,197.5"/>
+<polygon fill="#9aa0ad" points="824.5,143 820.5,152 828.5,152"/>
+<polygon fill="#9aa0ad" points="779.5,143.5 775.5,152.5 783.5,152.5"/>
+<polygon fill="#9aa0ad" points="814.5,135.5 805.5,139.5 805.5,131.5"/>
+<polygon fill="#9aa0ad" points="120,374.5 111,378.5 111,370.5"/>
+<polygon fill="#9aa0ad" points="847.5,355.5 838.5,359.5 838.5,351.5"/>
+</g>
+</svg>

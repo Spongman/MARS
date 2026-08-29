@@ -1,9 +1,9 @@
-# MARS - MIPS Assembler and Runtime Simulator (Web Edition)
+# THRAX - Teaching Harness for Runtime Assembly eXecution
 
-A modern, interactive web-based port of the classic MARS MIPS simulator, built with React, Monaco Editor, and a complete MIPS execution engine implemented in JavaScript.
+A son of MARS (but in a different language). A modern, interactive web-based port of the classic MARS MIPS simulator, built with React, Monaco Editor, and a complete MIPS execution engine implemented in TypeScript.
 
-![MARS Web Edition](https://img.shields.io/badge/MARS-Web%20Edition-blue)
-![JavaScript](https://img.shields.io/badge/Language-JavaScript-yellow)
+![THRAX](https://img.shields.io/badge/THRAX-Web%20Edition-blue)
+![TypeScript](https://img.shields.io/badge/Language-TypeScript-3178C6)
 ![React](https://img.shields.io/badge/Framework-React%2018-61dafb)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -14,10 +14,17 @@ A modern, interactive web-based port of the classic MARS MIPS simulator, built w
 - ✅ **Full MIPS Simulator**: Execute MIPS instructions with accurate register/memory state
 - ✅ **Monaco Editor**: Professional syntax highlighting and code editing
 - ✅ **Real-time Execution**: Assemble and run MIPS programs instantly
-- ✅ **Register Viewer**: Monitor all 32 MIPS registers in real-time
+- ✅ **Register Viewer**: Monitor all 32 MIPS registers in real-time, with Coproc 1 and Coproc 0 tabs
 - ✅ **Memory Inspector**: View memory contents during execution
-- ✅ **Console Output**: Capture syscall output (print int, char, exit)
-- ✅ **Example Programs**: 5 ready-to-run MIPS programs
+- ✅ **Console I/O**: Output plus in-console input for supported syscalls
+- ✅ **Data Segments**: Initialize memory with `.data`, labels, strings, and numeric values
+- ✅ **Interactive Debugging**: Assemble, toggle source breakpoints, step, continue, and step back
+- ✅ **Call Stack View**: Inspect active `jal` / `jalr` calls while stepping
+- ✅ **Source Workspace**: Multiple source tabs and find/replace
+- ✅ **Portable Export**: Download assembled text in THRAX HexText format
+- ✅ **Bitmap Display**: Render word-addressed 24-bit RGB framebuffer memory
+- ✅ **Keyboard/Display MMIO**: Queue keyboard input and inspect transmitter output at the standard THRAX device addresses
+- ✅ **Example Programs**: 8 ready-to-run MIPS programs
 - ✅ **Dark Theme UI**: VS Code-inspired interface
 
 ### Supported Instruction Types
@@ -32,19 +39,60 @@ A modern, interactive web-based port of the classic MARS MIPS simulator, built w
 
 **Load/Store**: LW, LH, LHU, LB, LBU, SW, SH, SB, LUI, LA
 
-**Jump & Branch**: BEQ, BNE, BGEZ, BGTZ, BLEZ, BLTZ, J, JAL, JR, JALR
+**Jump & Branch**: BEQ, BNE, BGEZ, BGTZ, BLEZ, BLTZ, BLT, BLE, BGT, BGE, J, JAL, JR, JALR
 
 **Special**: MFHI, MFLO, MTHI, MTLO, NOP, MOVE, LI, SYSCALL
+
+**Coprocessor 1 (floating point)**: LWC1, SWC1, LDC1, SDC1, MFC1, MTC1, ADD/SUB/MUL/DIV/ABS/NEG/SQRT/MOV (`.s` and `.d`), CVT.S.W, CVT.S.D, CVT.D.W, CVT.D.S, CVT.W.S, CVT.W.D, ROUND/TRUNC/CEIL/FLOOR.W (`.s` and `.d`), C.EQ/C.LT/C.LE (`.s` and `.d`), BC1T, BC1F, MOVT, MOVF. Comparisons and branches use condition flag 0; double-precision operands take the even register of an even/odd pair.
+
+**Coprocessor 0 (system control)**: MFC0, MTC0, ERET. The register file exposes `$8` (vaddr), `$12` (status), `$13` (cause), and `$14` (epc), reachable by number or by the `$status`-style aliases.
+
+**Assembler pseudos**: LA, B, BAL, BEQZ, BNEZ, BLT/BLE/BGT/BGE (and unsigned variants), NOT, NEG, NEGU, ABS, SEQ/SNE/SGT/SGE/SLE (and unsigned variants), REM, REMU, L.S, L.D, S.S, S.D, LI.S, LI.D. These are expanded to base MIPS instructions before addresses and branch offsets are assigned, so they work in debugging and HexText exports.
 
 ### Syscall Support
 - `1`: Print integer
 - `4`: Print string (null-terminated)
+- `5`: Read integer
+- `8`: Read string
+- `9`: Allocate heap memory (`sbrk`)
 - `10`: Exit program
 - `11`: Print character
+- `12`: Read character
+- `17`: Exit with code
+- `2`, `3`: Print float from `$f12` or double from `$f12`/`$f13`
+- `6`, `7`: Read float or double into `$f0`
+- `34`, `35`, `36`: Print integer as hexadecimal, binary, or unsigned decimal
+
+### Memory-Mapped Keyboard and Display
+
+The Keyboard and Display Simulator uses the original THRAX MMIO addresses:
+`0xffff0000` receiver control, `0xffff0004` receiver data, `0xffff0008`
+transmitter control, and `0xffff000c` transmitter data. Receiver and
+transmitter readiness use bit 0. Reading receiver data consumes one queued
+character; writing transmitter data appends its low byte to the tool display.
+
+### Supported Data Directives
+- Segments: `.data`, `.text`, `.kdata`, `.ktext`, each accepting an optional base address such as `.ktext 0x80000180`
+- Storage: `.word`, `.half`, `.byte`, `.float`, `.double`, `.ascii`, `.asciiz`, `.space`, `.align`
+- Symbols: `.globl`, `.global`, `.extern name, size` (which reserves `size` zeroed bytes in the data segment), `.eqv`
+- Program structure: `.macro`/`.end_macro`, `.include "file.asm"`, and `.set`, which is accepted and ignored
+
+### Operand Syntax
+- Registers by name or number: `$t0` and `$8` are the same register, as are `$ra` and `$31`
+- Character literals are integers: `li $t0, 'a'`, `.byte 'a', '
+'`
+- Label expressions add a constant to a label: `la $t0, arr+4`, `lw $t1, arr+4($s0)`, `.word arr+8`
+
+### Multi-File Programs
+Each editor tab is a file, and double-clicking a tab renames it. `.include "lib.asm"`
+pulls in another open tab by name, and the toolbar's **All files** switch assembles
+every open tab into one program instead of only the active one. Files share one
+symbol table, so labels resolve across them; the active tab supplies the entry point,
+which is the `main` label when the program defines one.
 
 ## 📦 Tech Stack
 
-- **Frontend**: React 18 + Vite
+- **Frontend**: React 18 + TypeScript + Vite
 - **Code Editor**: Monaco Editor
 - **State Management**: Zustand
 - **Styling**: CSS3
@@ -60,8 +108,8 @@ A modern, interactive web-based port of the classic MARS MIPS simulator, built w
 
 ```bash
 # Clone the repository
-git clone https://github.com/Spongman/MARS.git
-cd MARS
+git clone https://github.com/Spongman/THRAX.git
+cd THRAX
 
 # Install dependencies
 npm install
@@ -123,23 +171,25 @@ done:
 ```
 src/
 ├── core/
-│   ├── lexer.js           # Tokenization
-│   ├── parser.js          # AST generation
-│   ├── assembler.js       # Machine code generation
-│   ├── simulator.js       # Execution engine
-│   ├── mipsLanguage.js    # Monaco syntax support
-│   └── index.js           # Exports
+│   ├── lexer.ts           # Tokenization
+│   ├── parser.ts          # AST generation
+│   ├── assembler.ts       # Machine code generation
+│   ├── simulator.ts       # Execution engine
+│   ├── mipsLanguage.ts    # Monaco syntax support
+│   └── index.ts           # Exports
 ├── components/
-│   ├── Toolbar.jsx        # Run/Reset/Examples
-│   ├── RegisterView.jsx   # Register display
-│   ├── MemoryView.jsx     # Memory inspector
-│   └── ConsoleOutput.jsx  # Program output
+│   ├── Toolbar.tsx        # Run/Reset/Examples
+│   ├── RegisterView.tsx   # Register display
+│   ├── MemoryView.tsx     # Memory inspector
+│   ├── BitmapDisplay.tsx  # Memory-mapped RGB framebuffer tool
+│   ├── KeyboardDisplayTool.tsx # THRAX keyboard/display MMIO tool
+│   └── ConsoleOutput.tsx  # Program output
 ├── store/
-│   └── marsStore.js       # Zustand state management
+│   └── thraxStore.ts       # Zustand state management
 ├── hooks/
-│   └── useExamples.js     # Example loader hook
-├── App.jsx                # Main application
-└── examples.js            # Example programs
+│   └── useExamples.ts     # Example loader hook
+├── App.tsx                # Main application
+└── examples.ts            # Example programs
 ```
 
 ## 🔄 Execution Pipeline
@@ -160,7 +210,7 @@ src/
 
 4. **Simulation** (`MipsSimulator`)
    - Executes machine code instruction-by-instruction
-   - Manages 32 registers + special registers (HI, LO, PC)
+   - Manages 32 registers + special registers (HI, LO, PC) and the CP0/CP1 register files
    - Simulates memory (4MB)
    - Handles syscalls
 
@@ -182,26 +232,31 @@ src/
 - [x] MIPS syntax highlighting
 
 ### In Progress 🔄
-- [ ] Step-through debugging
-- [ ] Breakpoint support
-- [ ] Call stack viewer
-- [ ] Memory data visualization
-- [ ] Interactive input (syscall 5, 8)
-- [ ] Assembly directives (.word, .asciiz, etc.)
+- [x] Step-through debugging and backstepping
+- [x] Breakpoint support
+- [x] Call stack viewer
+- [x] Bitmap display tool (24-bit RGB words, configurable base address)
+- [x] Keyboard/display MMIO tool (receiver/transmitter data registers)
+- [x] Interactive input (syscalls 5, 8, 12)
+- [x] Assembly directives and initialized data segments
 
 ### Planned 🎯
-- [ ] Floating-point instructions
-- [ ] Cache simulation
-- [ ] Pipeline visualization
-- [ ] Data hazard detection
-- [ ] Control hazard visualization
+- [x] Floating-point instructions (coprocessor 1) and coprocessor 0 registers
+- [x] Cache simulation (configurable blocks, associativity, and replacement)
+- [x] Pipeline visualization (five-stage timeline with per-cycle stages)
+- [x] Data hazard detection (RAW, with and without forwarding)
+- [x] Control hazard visualization (branch and jump resolved in ID, EX, or MEM)
+- [x] Branch prediction in the pipeline (static, 1-bit, and 2-bit)
+- [x] Instruction statistics and branch prediction (BHT) tools
+- [x] MIPS X-Ray: the animated datapath, control unit, ALU control, and register bank, drawn as themed SVG
+- [x] Delayed branching, as THRAX's setting of the same name
 - [ ] Assembly program templates
-- [ ] Save/load programs to browser storage
-- [ ] Export machine code to hex
+- [x] Save/load programs to browser storage
+- [x] Export machine code to HexText
 - [ ] Dark/light theme toggle
 - [ ] Keyboard shortcuts
 - [ ] Mobile responsive design
-- [ ] Multi-file project support
+- [x] Multiple source tabs (each tab assembles independently)
 
 ### Future Enhancements 🚀
 - [ ] Collaborative editing
@@ -210,19 +265,25 @@ src/
 - [ ] AI-powered assembly generation
 - [ ] Formal verification of programs
 
+## Feature Architecture
+
+The staged architecture for bringing the original THRAX capability set to the
+web port is documented in [docs/FEATURE_ARCHITECTURE.md](docs/FEATURE_ARCHITECTURE.md).
+
 ## 🐛 Known Limitations
 
-- No floating-point instruction support
-- No coprocessor (CP0) instructions
-- Limited syscall support (basic I/O only)
-- No directive support (.word, .asciiz, etc.)
-- Maximum 100,000 instruction execution limit (safety)
-- Memory size limited to 4MB in browser
+- Coprocessor 1 covers single and double precision arithmetic, conversion, comparison, and moves; the FCSR is modelled as the eight condition flags only, so rounding mode selection and exception enables are not configurable
+- Coprocessor 0 provides the vaddr/status/cause/epc registers, `mfc0`, `mtc0`, and `eret`. A `.ktext` handler at `0x80000180` receives traps; without one, a trap records its cause and EPC and stops execution
+- A label expression takes one label plus a constant (`arr+4`); differences of two labels are rejected
+- A text segment can be based only before it emits instructions, since pseudo-instructions expand after parsing
+- Syscall support is intentionally partial; unsupported syscall numbers stop safely with an error
+- Maximum 100,000 instruction execution limit (safety); execution yields between batches so runaway code does not block the page
+- Sparse virtual memory supports standard THRAX data and stack addresses; the inspector shows the first 100 initialized words
 
 ## 📖 MIPS Reference
 
-For detailed MIPS instruction set reference, see the original MARS documentation:
-- [MARS Official Documentation](https://github.com/dpetersanderson/MARS)
+For detailed MIPS instruction set reference, see the original THRAX documentation:
+- [THRAX Official Documentation](https://github.com/dpetersanderson/THRAX)
 - [MIPS ISA Reference](https://en.wikipedia.org/wiki/MIPS_architecture)
 
 ## 🤝 Contributing
@@ -235,14 +296,18 @@ Contributions are welcome! Please feel free to:
 
 ## 📄 License
 
-MIT License - Same as the original MARS simulator
+MIT License - Same as the original THRAX simulator
 
-Original MARS developed by Pete Sanderson and Ken Vollmar.
+Original THRAX developed by Pete Sanderson and Ken Vollmar.
 Web port developed by Spongman.
+
+The X-Ray wire graph in `src/tools/xray/datapaths.ts` is generated from THRAX
+4.5's datapath XML by `scripts/generate-xray-datapaths.py`.  The drawings
+themselves are redrawn as themed SVG rather than copied.
 
 ## 🙏 Acknowledgments
 
-- **Original MARS**: Pete Sanderson and Ken Vollmar
+- **Original THRAX**: Pete Sanderson and Ken Vollmar
 - **Monaco Editor**: Microsoft
 - **React**: Meta
 - **Zustand**: Poimandres
@@ -250,7 +315,7 @@ Web port developed by Spongman.
 ## 📞 Support
 
 For issues, questions, or suggestions:
-1. Check existing [GitHub Issues](https://github.com/Spongman/MARS/issues)
+1. Check existing [GitHub Issues](https://github.com/Spongman/THRAX/issues)
 2. Create a new issue with detailed description
 3. Include example code if reporting a bug
 
@@ -265,4 +330,4 @@ This simulator is designed for educational purposes. It's perfect for:
 
 ---
 
-**Try it now**: [MARS Web Edition](https://github.com/Spongman/MARS)
+**Try it now**: [THRAX](https://github.com/Spongman/THRAX)

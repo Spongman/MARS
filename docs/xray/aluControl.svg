@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 800 457" width="800" height="457" data-diagram="aluControl">
+<rect id="ground" x="0" y="0" width="800" height="457" fill="#1e2128"/>
+<g id="blocks" inkscape:groupmode="layer" inkscape:label="blocks" fill="#3a3f4a" stroke="#8c92a0" stroke-width="1.5">
+<rect id="block-0" inkscape:label="block 0 panel" data-kind="block" data-block="0" data-shape="panel" fill="none" x="57" y="37" width="678" height="420"/>
+<polygon id="block-1" inkscape:label="block 1 or" data-kind="block" data-block="1" data-shape="or" data-facing="right" points="153,317.5 157.6,323.3 161.4,329.2 164.4,335 166.5,340.8 167.8,346.7 168.2,352.5 167.8,358.3 166.5,364.2 164.4,370 161.4,375.8 157.6,381.7 153,387.5 161.7,386.4 169.9,385 177.7,383.2 185.1,381.1 192.1,378.7 198.6,376 204.7,372.9 210.4,369.5 215.7,365.7 220.6,361.6 225,357.2 229,352.5 225,347.8 220.6,343.4 215.7,339.3 210.4,335.5 204.7,332.1 198.6,329.1 192.1,326.3 185.1,323.9 177.7,321.8 169.9,320 161.7,318.6 153,317.5"/>
+<polygon id="block-2" inkscape:label="block 2 and" data-kind="block" data-block="2" data-shape="and" data-facing="right" points="300,125.2 329.5,125.2 337.3,125.9 344.8,128.2 351.7,131.9 357.8,136.9 362.8,142.9 366.5,149.9 368.7,157.4 369.5,165.2 368.7,173 366.5,180.5 362.8,187.4 357.8,193.5 351.7,198.4 344.8,202.1 337.3,204.4 329.5,205.2 300,205.2"/>
+<polygon id="block-3" inkscape:label="block 3 and" data-kind="block" data-block="3" data-shape="and" data-facing="right" points="300,294.8 334.5,294.8 341.3,295.5 347.9,297.5 353.9,300.7 359.2,305.1 363.6,310.4 366.8,316.4 368.8,323 369.5,329.8 368.8,336.7 366.8,343.2 363.6,349.3 359.2,354.6 353.9,358.9 347.9,362.2 341.3,364.2 334.5,364.8 300,364.8"/>
+<polygon id="block-4" inkscape:label="block 4 or" data-kind="block" data-block="4" data-shape="or" data-facing="right" points="561,98.5 565.7,105 569.6,111.5 572.6,118 574.7,124.5 576,131 576.4,137.5 576,144 574.7,150.5 572.6,157 569.6,163.5 565.7,170 561,176.5 569.8,175.3 578.1,173.7 586,171.7 593.5,169.4 600.6,166.7 607.2,163.6 613.4,160.2 619.2,156.4 624.5,152.2 629.4,147.7 633.9,142.8 638,137.5 633.9,132.2 629.4,127.3 624.5,122.8 619.2,118.6 613.4,114.8 607.2,111.4 600.6,108.3 593.5,105.6 586,103.3 578.1,101.3 569.8,99.7 561,98.5"/>
+<polygon id="block-5" inkscape:label="block 5 nor" data-kind="block" data-block="5" data-shape="nor" data-facing="right" points="565.5,214.5 570.1,219.8 573.8,225.2 576.8,230.5 578.8,235.8 580.1,241.2 580.5,246.5 580.1,251.8 578.8,257.2 576.8,262.5 573.8,267.8 570.1,273.2 565.5,278.5 574,277.5 582.2,276.2 589.9,274.6 597.2,272.7 604,270.5 610.5,267.9 616.5,265.1 622.2,262 627.4,258.6 632.2,254.9 636.5,250.8 640.5,246.5 636.5,242.2 632.2,238.1 627.4,234.4 622.2,231 616.5,227.9 610.5,225.1 604,222.5 597.2,220.3 589.9,218.4 582.2,216.8 574,215.5 565.5,214.5"/>
+</g>
+<g id="wires" inkscape:groupmode="layer" inkscape:label="wires" stroke="#9aa0ad" stroke-width="2.5">
+<line id="wire-0" inkscape:label="wire 0 init" data-kind="wire" data-wire="0" data-name="init" data-run="horizontal" x1="2.5" y1="29.5" x2="3.5" y2="29.5"><title>0 init</title></line>
+<line id="wire-1" inkscape:label="wire 1 bit3_1" data-kind="wire" data-wire="1" data-name="bit3_1" data-run="horizontal" x1="6.5" y1="111.5" x2="108" y2="111.5"><title>1 bit3_1</title></line>
+<line id="wire-2" inkscape:label="wire 2 bit3_2" data-kind="wire" data-wire="2" data-name="bit3_2" data-run="vertical" x1="106.5" y1="110" x2="106.5" y2="338"><title>2 bit3_2</title></line>
+<line id="wire-3" inkscape:label="wire 3 bit3_3" data-kind="wire" data-wire="3" data-name="bit3_3" data-run="horizontal" x1="105" y1="336.5" x2="188" y2="336.5"><title>3 bit3_3</title></line>
+<line id="wire-4" inkscape:label="wire 4 bit2_1" data-kind="wire" data-wire="4" data-name="bit2_1" data-run="horizontal" x1="6.5" y1="184.5" x2="157" y2="184.5"><title>4 bit2_1</title></line>
+<line id="wire-5" inkscape:label="wire 5 bit2_2" data-kind="wire" data-wire="5" data-name="bit2_2" data-run="vertical" x1="155.5" y1="183" x2="155.5" y2="265"><title>5 bit2_2</title></line>
+<line id="wire-6" inkscape:label="wire 6 bit2_2" data-kind="wire" data-wire="6" data-name="bit2_2" data-run="horizontal" x1="154" y1="263.5" x2="597.5" y2="263.5"><title>6 bit2_2</title></line>
+<line id="wire-7" inkscape:label="wire 7 bit1_1" data-kind="wire" data-wire="7" data-name="bit1_1" data-run="horizontal" x1="6.5" y1="286.5" x2="196" y2="286.5"><title>7 bit1_1</title></line>
+<line id="wire-8" inkscape:label="wire 8 bit1_2" data-kind="wire" data-wire="8" data-name="bit1_2" data-run="vertical" x1="194.5" y1="288" x2="194.5" y2="187"><title>8 bit1_2</title></line>
+<line id="wire-9" inkscape:label="wire 9 bit1_3" data-kind="wire" data-wire="9" data-name="bit1_3" data-run="horizontal" x1="193" y1="188.5" x2="330.5" y2="188.5"><title>9 bit1_3</title></line>
+<line id="wire-10" inkscape:label="wire 10 bit0_1" data-kind="wire" data-wire="10" data-name="bit0_1" data-run="horizontal" x1="6.5" y1="371.5" x2="185.5" y2="371.5"><title>10 bit0_1</title></line>
+<line id="wire-11" inkscape:label="wire 11 opALU0_1" data-kind="wire" data-wire="11" data-name="opALU0_1" data-run="vertical" x1="240.5" y1="6.5" x2="240.5" y2="150.5"><title>11 opALU0_1</title></line>
+<line id="wire-12" inkscape:label="wire 12 opALU0_2" data-kind="wire" data-wire="12" data-name="opALU0_2" data-run="vertical" x1="240.5" y1="147.5" x2="240.5" y2="234"><title>12 opALU0_2</title></line>
+<line id="wire-13" inkscape:label="wire 13 and1_in1" data-kind="wire" data-wire="13" data-name="and1_in1" data-run="horizontal" x1="239" y1="148.5" x2="332.5" y2="148.5"><title>13 and1_in1</title></line>
+<line id="wire-14" inkscape:label="wire 14 opALU0_3" data-kind="wire" data-wire="14" data-name="opALU0_3" data-run="vertical" x1="240.5" y1="231" x2="240.5" y2="316"><title>14 opALU0_3</title></line>
+<line id="wire-15" inkscape:label="wire 15 or2_in2" data-kind="wire" data-wire="15" data-name="or2_in2" data-run="horizontal" x1="239" y1="231.5" x2="600" y2="231.5"><title>15 or2_in2</title></line>
+<line id="wire-16" inkscape:label="wire 16 and2_in1" data-kind="wire" data-wire="16" data-name="and2_in1" data-run="horizontal" x1="239" y1="314.5" x2="332.5" y2="314.5"><title>16 and2_in1</title></line>
+<line id="wire-17" inkscape:label="wire 17 opALU0_1" data-kind="wire" data-wire="17" data-name="opALU0_1" data-run="vertical" x1="391.5" y1="6.5" x2="391.5" y2="121"><title>17 opALU0_1</title></line>
+<line id="wire-18" inkscape:label="wire 18 or1_in1" data-kind="wire" data-wire="18" data-name="or1_in1" data-run="horizontal" x1="390" y1="119.5" x2="597" y2="119.5"><title>18 or1_in1</title></line>
+<line id="wire-19" inkscape:label="wire 19 or0_out" data-kind="wire" data-wire="19" data-name="or0_out" data-run="horizontal" x1="197" y1="349.5" x2="331.5" y2="349.5"><title>19 or0_out</title></line>
+<line id="wire-20" inkscape:label="wire 20 op3" data-kind="wire" data-wire="20" data-name="op3" data-run="horizontal" x1="334" y1="325.5" x2="796.5" y2="325.5"><title>20 op3</title></line>
+<line id="wire-21" inkscape:label="wire 21 or1_in2" data-kind="wire" data-wire="21" data-name="or1_in2" data-run="horizontal" x1="334" y1="158.5" x2="593.5" y2="158.5"><title>21 or1_in2</title></line>
+<line id="wire-22" inkscape:label="wire 22 op1" data-kind="wire" data-wire="22" data-name="op1" data-run="horizontal" x1="606" y1="134.5" x2="796.5" y2="134.5"><title>22 op1</title></line>
+<line id="wire-23" inkscape:label="wire 23 op2" data-kind="wire" data-wire="23" data-name="op2" data-run="horizontal" x1="609.5" y1="244.5" x2="796.5" y2="244.5"><title>23 op2</title></line>
+</g>
+<g id="captions" inkscape:groupmode="layer" inkscape:label="captions" fill="#cdd0d7">
+<text id="text-0" inkscape:label="caption 0 bit 3" data-kind="caption" data-caption="0" x="3" y="90" font-size="18" text-anchor="start" font-weight="700">bit 3</text>
+<text id="text-1" inkscape:label="caption 1 bit 2" data-kind="caption" data-caption="1" x="3" y="163" font-size="18" text-anchor="start" font-weight="700">bit 2</text>
+<text id="text-2" inkscape:label="caption 2 bit 1" data-kind="caption" data-caption="2" x="3" y="267" font-size="18" text-anchor="start" font-weight="700">bit 1</text>
+<text id="text-3" inkscape:label="caption 3 bit 0" data-kind="caption" data-caption="3" x="5" y="352" font-size="18" text-anchor="start" font-weight="700">bit 0</text>
+<text id="text-4" inkscape:label="caption 4 op 1" data-kind="caption" data-caption="4" x="744" y="118" font-size="18" text-anchor="start" font-weight="700">op 1</text>
+<text id="text-5" inkscape:label="caption 5 op 2" data-kind="caption" data-caption="5" x="744" y="228" font-size="18" text-anchor="start" font-weight="700">op 2</text>
+<text id="text-6" inkscape:label="caption 6 op 3" data-kind="caption" data-caption="6" x="746" y="312" font-size="18" text-anchor="start" font-weight="700">op 3</text>
+<text id="text-7" inkscape:label="caption 7 opALU1" data-kind="caption" data-caption="7" x="167" y="15" font-size="18" text-anchor="start" font-weight="700">opALU1</text>
+<text id="text-8" inkscape:label="caption 8 opALU2" data-kind="caption" data-caption="8" x="315" y="15" font-size="18" text-anchor="start" font-weight="700">opALU2</text>
+</g>
+<g id="derived" inkscape:groupmode="layer" inkscape:label="derived (not read back)" pointer-events="none">
+<circle fill="#ffffff" cx="240.5" cy="148.5" r="3"/>
+<circle fill="#ffffff" cx="240.5" cy="231.5" r="3"/>
+</g>
+</svg>

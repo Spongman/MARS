@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>dockview 8.2.0 - tab overflow dropdown flashes a document scrollbar</title>
+<style>
+	/* No `overflow: hidden` anywhere: that is the point of the repro. */
+	html, body { height: 100%; margin: 0; background: #1e1e1e; color: #d4d4d4; font: 13px sans-serif; }
+	#app { display: flex; flex-direction: column; height: 100vh; }
+	#dock { flex: 1; min-height: 0; }
+	.panel { padding: 12px; }
+</style>
+</head>
+<body>
+<!-- Narrow the window until the tab strip overflows, then click the overflow
+     (chevron) button at its right edge and watch the console. -->
+<div id="app">
+	<div id="dock"></div>
+</div>
+
+<script>
+	document.write('<script src="https://unpkg.com/dockview-core@8.2.0/dist/dockview-core.js"><\/script>')
+</script>
+<script>
+	const { createDockview, themeDark } = window['dockview-core']
+
+	const api = createDockview(document.getElementById('dock'), {
+		theme: themeDark,
+		createComponent: (options) => {
+			const element = document.createElement('div')
+			element.className = 'panel'
+			element.textContent = options.name
+			return { element, init: () => {} }
+		},
+	})
+
+	// One group, enough tabs to overflow, so the overflow dropdown appears at the
+	// right-hand edge of the window.
+	for (let i = 0; i < 14; i++) {
+		api.addPanel({
+			id: `panel_${i}`,
+			component: 'default',
+			title: `Panel Number ${i}`,
+			position: i === 0 ? undefined : { referencePanel: 'panel_0', direction: 'within' },
+			inactive: i !== 0,
+		})
+	}
+
+	/*
+	 * dockview-core PopupService.openPopover() places the popup at the raw click
+	 * coordinates and only calls shiftAbsoluteElementIntoView() inside a
+	 * requestAnimationFrame.  Between those two points the popup sticks out past
+	 * the right edge of the viewport, growing documentElement.scrollWidth, which
+	 * flashes a horizontal scrollbar and reflows every `100vh` box on the page.
+	 *
+	 * Sample the scroll width for a few frames after the click to catch it.
+	 */
+	const doc = document.documentElement
+
+	document.addEventListener('click', (event) => {
+		if (!event.target.closest('.dv-tabs-overflow-dropdown-root')) return
+		console.log(`click: scrollWidth=${doc.scrollWidth} clientWidth=${doc.clientWidth}`)
+		let frame = 0
+		const sample = () => {
+			const overflowing = doc.scrollWidth > doc.clientWidth
+			console.log(`frame ${frame}: scrollWidth=${doc.scrollWidth} clientWidth=${doc.clientWidth}${overflowing ? '   <-- horizontal scrollbar' : ''}`)
+			if (++frame < 6) requestAnimationFrame(sample)
+		}
+		requestAnimationFrame(sample)
+	}, true)
+</script>
+</body>
+</html>

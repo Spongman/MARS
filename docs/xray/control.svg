@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 800 498" width="800" height="498" data-diagram="control">
+<rect id="ground" x="0" y="0" width="800" height="498" fill="#1e2128"/>
+<g id="blocks" inkscape:groupmode="layer" inkscape:label="blocks" fill="#3a3f4a" stroke="#8c92a0" stroke-width="1.5">
+<rect id="block-0" inkscape:label="block 0 panel" data-kind="block" data-block="0" data-shape="panel" fill="none" x="35" y="3" width="653" height="490"/>
+<polygon id="block-1" inkscape:label="block 1 and" data-kind="block" data-block="1" data-shape="and" data-facing="down" points="206.1,169 270.1,169 270.1,185 269.5,191.2 267.6,197.2 264.7,202.8 260.7,207.6 255.8,211.6 250.3,214.6 244.3,216.4 238.1,217 231.8,216.4 225.8,214.6 220.3,211.6 215.4,207.6 211.5,202.8 208.5,197.2 206.7,191.2 206.1,185"/>
+<polygon id="block-2" inkscape:label="block 2 and" data-kind="block" data-block="2" data-shape="and" data-facing="down" points="310.2,169 375.1,169 375.1,184.6 374.4,190.9 372.6,197 369.6,202.6 365.6,207.5 360.7,211.5 355.1,214.5 349,216.4 342.6,217 336.3,216.4 330.2,214.5 324.6,211.5 319.7,207.5 315.7,202.6 312.7,197 310.8,190.9 310.2,184.6"/>
+<polygon id="block-3" inkscape:label="block 3 and" data-kind="block" data-block="3" data-shape="and" data-facing="down" points="407.1,168 469.1,168 469.1,185 468.5,191 466.7,196.9 463.8,202.2 460,206.9 455.3,210.8 449.9,213.6 444.1,215.4 438.1,216 432,215.4 426.2,213.6 420.8,210.8 416.2,206.9 412.3,202.2 409.4,196.9 407.7,191 407.1,185"/>
+<polygon id="block-4" inkscape:label="block 4 and" data-kind="block" data-block="4" data-shape="and" data-facing="down" points="502.1,168 564.9,168 564.9,184.6 564.3,190.7 562.5,196.6 559.6,202 555.7,206.8 551,210.7 545.5,213.6 539.6,215.4 533.5,216 527.4,215.4 521.5,213.6 516,210.7 511.3,206.8 507.4,202 504.5,196.6 502.7,190.7 502.1,184.6"/>
+<polygon id="block-5" inkscape:label="block 5 or" data-kind="block" data-block="5" data-shape="or" data-facing="right" points="575,241.5 578.1,246.2 580.6,250.8 582.6,255.5 584,260.2 584.8,264.8 585.1,269.5 584.8,274.2 584,278.8 582.6,283.5 580.6,288.2 578.1,292.8 575,297.5 580.8,296.6 586.2,295.5 591.4,294.1 596.3,292.4 601,290.5 605.3,288.3 609.4,285.8 613.2,283.1 616.7,280.1 619.9,276.8 622.8,273.3 625.5,269.5 622.8,265.7 619.9,262.2 616.7,258.9 613.2,255.9 609.4,253.2 605.3,250.7 601,248.5 596.3,246.6 591.4,244.9 586.2,243.5 580.8,242.4 575,241.5"/>
+<polygon id="block-6" inkscape:label="block 6 or" data-kind="block" data-block="6" data-shape="or" data-facing="right" points="575,324.5 578.1,328.5 580.6,332.5 582.6,336.5 584,340.5 584.8,344.5 585.1,348.5 584.8,352.5 584,356.5 582.6,360.5 580.6,364.5 578.1,368.5 575,372.5 580.8,371.7 586.2,370.8 591.4,369.6 596.3,368.1 601,366.5 605.3,364.6 609.4,362.5 613.2,360.1 616.7,357.6 619.9,354.8 622.8,351.7 625.5,348.5 622.8,345.3 619.9,342.2 616.7,339.4 613.2,336.9 609.4,334.5 605.3,332.4 601,330.5 596.3,328.9 591.4,327.4 586.2,326.2 580.8,325.3 575,324.5"/>
+</g>
+<g id="wires" inkscape:groupmode="layer" inkscape:label="wires" stroke="#9aa0ad" stroke-width="2.5">
+<line id="wire-0" inkscape:label="wire 0 init" data-kind="wire" data-wire="0" data-name="init" data-run="horizontal" x1="2.5" y1="29.5" x2="5.5" y2="29.5"><title>0 init</title></line>
+<line id="wire-1" inkscape:label="wire 1 bit5_1and1" data-kind="wire" data-wire="1" data-name="bit5_1and1" data-run="horizontal" x1="2.5" y1="29.5" x2="215" y2="29.5"><title>1 bit5_1and1</title></line>
+<line id="wire-2" inkscape:label="wire 2 bit4_1and1" data-kind="wire" data-wire="2" data-name="bit4_1and1" data-run="horizontal" x1="4.5" y1="53.5" x2="225.5" y2="53.5"><title>2 bit4_1and1</title></line>
+<line id="wire-3" inkscape:label="wire 3 bit3_1and1" data-kind="wire" data-wire="3" data-name="bit3_1and1" data-run="horizontal" x1="4.5" y1="77.5" x2="236" y2="77.5"><title>3 bit3_1and1</title></line>
+<line id="wire-4" inkscape:label="wire 4 bit2_1and1" data-kind="wire" data-wire="4" data-name="bit2_1and1" data-run="horizontal" x1="4.5" y1="101.5" x2="245.5" y2="101.5"><title>4 bit2_1and1</title></line>
+<line id="wire-5" inkscape:label="wire 5 bit1_1and1" data-kind="wire" data-wire="5" data-name="bit1_1and1" data-run="horizontal" x1="4.5" y1="125.5" x2="255.5" y2="125.5"><title>5 bit1_1and1</title></line>
+<line id="wire-6" inkscape:label="wire 6 bit0_1and1" data-kind="wire" data-wire="6" data-name="bit0_1and1" data-run="horizontal" x1="4.5" y1="146.5" x2="265" y2="146.5"><title>6 bit0_1and1</title></line>
+<line id="wire-7" inkscape:label="wire 7 bit5_2and1" data-kind="wire" data-wire="7" data-name="bit5_2and1" data-run="horizontal" x1="212" y1="29.5" x2="319" y2="29.5"><title>7 bit5_2and1</title></line>
+<line id="wire-8" inkscape:label="wire 8 bit5_3and1" data-kind="wire" data-wire="8" data-name="bit5_3and1" data-run="vertical" x1="212.5" y1="28" x2="212.5" y2="186"><title>8 bit5_3and1</title></line>
+<line id="wire-9" inkscape:label="wire 9 bit4_2and1" data-kind="wire" data-wire="9" data-name="bit4_2and1" data-run="horizontal" x1="222.5" y1="53.5" x2="329" y2="53.5"><title>9 bit4_2and1</title></line>
+<line id="wire-10" inkscape:label="wire 10 bit4_3and1" data-kind="wire" data-wire="10" data-name="bit4_3and1" data-run="vertical" x1="223.5" y1="52" x2="223.5" y2="191"><title>10 bit4_3and1</title></line>
+<line id="wire-11" inkscape:label="wire 11 bit3_2and1" data-kind="wire" data-wire="11" data-name="bit3_2and1" data-run="horizontal" x1="231" y1="77.5" x2="339" y2="77.5"><title>11 bit3_2and1</title></line>
+<line id="wire-12" inkscape:label="wire 12 bit3_3and1" data-kind="wire" data-wire="12" data-name="bit3_3and1" data-run="vertical" x1="232.5" y1="76" x2="232.5" y2="192.5"><title>12 bit3_3and1</title></line>
+<line id="wire-13" inkscape:label="wire 13 bit2_2and1" data-kind="wire" data-wire="13" data-name="bit2_2and1" data-run="horizontal" x1="242.5" y1="101.5" x2="350" y2="101.5"><title>13 bit2_2and1</title></line>
+<line id="wire-14" inkscape:label="wire 14 bit2_3and1" data-kind="wire" data-wire="14" data-name="bit2_3and1" data-run="vertical" x1="243.5" y1="100" x2="243.5" y2="192.5"><title>14 bit2_3and1</title></line>
+<line id="wire-15" inkscape:label="wire 15 bit1_2and1" data-kind="wire" data-wire="15" data-name="bit1_2and1" data-run="horizontal" x1="252.5" y1="125.5" x2="360" y2="125.5"><title>15 bit1_2and1</title></line>
+<line id="wire-16" inkscape:label="wire 16 bit1_3and1" data-kind="wire" data-wire="16" data-name="bit1_3and1" data-run="vertical" x1="253.5" y1="124" x2="253.5" y2="190.5"><title>16 bit1_3and1</title></line>
+<line id="wire-17" inkscape:label="wire 17 bit0_2and1" data-kind="wire" data-wire="17" data-name="bit0_2and1" data-run="horizontal" x1="261" y1="146.5" x2="370" y2="146.5"><title>17 bit0_2and1</title></line>
+<line id="wire-18" inkscape:label="wire 18 bit0_3and1" data-kind="wire" data-wire="18" data-name="bit0_3and1" data-run="vertical" x1="263.5" y1="145" x2="263.5" y2="186"><title>18 bit0_3and1</title></line>
+<line id="wire-19" inkscape:label="wire 19 bit5_2and2" data-kind="wire" data-wire="19" data-name="bit5_2and2" data-run="horizontal" x1="316" y1="29.5" x2="416" y2="29.5"><title>19 bit5_2and2</title></line>
+<line id="wire-20" inkscape:label="wire 20 bit5_3and2" data-kind="wire" data-wire="20" data-name="bit5_3and2" data-run="vertical" x1="317.5" y1="28" x2="317.5" y2="186.5"><title>20 bit5_3and2</title></line>
+<line id="wire-21" inkscape:label="wire 21 bit4_2and2" data-kind="wire" data-wire="21" data-name="bit4_2and2" data-run="horizontal" x1="326" y1="53.5" x2="425" y2="53.5"><title>21 bit4_2and2</title></line>
+<line id="wire-22" inkscape:label="wire 22 bit4_3and2" data-kind="wire" data-wire="22" data-name="bit4_3and2" data-run="vertical" x1="326.5" y1="52" x2="326.5" y2="190.5"><title>22 bit4_3and2</title></line>
+<line id="wire-23" inkscape:label="wire 23 bit3_2and2" data-kind="wire" data-wire="23" data-name="bit3_2and2" data-run="horizontal" x1="336" y1="77.5" x2="435" y2="77.5"><title>23 bit3_2and2</title></line>
+<line id="wire-24" inkscape:label="wire 24 bit3_3and2" data-kind="wire" data-wire="24" data-name="bit3_3and2" data-run="vertical" x1="337.5" y1="76" x2="337.5" y2="192.5"><title>24 bit3_3and2</title></line>
+<line id="wire-25" inkscape:label="wire 25 bit2_2and2" data-kind="wire" data-wire="25" data-name="bit2_2and2" data-run="horizontal" x1="347" y1="101.5" x2="445" y2="101.5"><title>25 bit2_2and2</title></line>
+<line id="wire-26" inkscape:label="wire 26 bit2_3and2" data-kind="wire" data-wire="26" data-name="bit2_3and2" data-run="vertical" x1="347.5" y1="100" x2="347.5" y2="192.5"><title>26 bit2_3and2</title></line>
+<line id="wire-27" inkscape:label="wire 27 bit1_2and2" data-kind="wire" data-wire="27" data-name="bit1_2and2" data-run="horizontal" x1="357" y1="125.5" x2="455" y2="125.5"><title>27 bit1_2and2</title></line>
+<line id="wire-28" inkscape:label="wire 28 bit1_3and2" data-kind="wire" data-wire="28" data-name="bit1_3and2" data-run="vertical" x1="358.5" y1="124" x2="358.5" y2="190.5"><title>28 bit1_3and2</title></line>
+<line id="wire-29" inkscape:label="wire 29 bit0_2and2" data-kind="wire" data-wire="29" data-name="bit0_2and2" data-run="horizontal" x1="366" y1="146.5" x2="464.5" y2="146.5"><title>29 bit0_2and2</title></line>
+<line id="wire-30" inkscape:label="wire 30 bit0_3and2" data-kind="wire" data-wire="30" data-name="bit0_3and2" data-run="vertical" x1="368.5" y1="145" x2="368.5" y2="186"><title>30 bit0_3and2</title></line>
+<line id="wire-31" inkscape:label="wire 31 bit5_2and3" data-kind="wire" data-wire="31" data-name="bit5_2and3" data-run="horizontal" x1="413" y1="29.5" x2="511.5" y2="29.5"><title>31 bit5_2and3</title></line>
+<line id="wire-32" inkscape:label="wire 32 bit5_3and3" data-kind="wire" data-wire="32" data-name="bit5_3and3" data-run="vertical" x1="413.5" y1="28" x2="413.5" y2="185.5"><title>32 bit5_3and3</title></line>
+<line id="wire-33" inkscape:label="wire 33 bit4_2and3" data-kind="wire" data-wire="33" data-name="bit4_2and3" data-run="horizontal" x1="421.5" y1="53.5" x2="520.5" y2="53.5"><title>33 bit4_2and3</title></line>
+<line id="wire-34" inkscape:label="wire 34 bit4_3and3" data-kind="wire" data-wire="34" data-name="bit4_3and3" data-run="vertical" x1="423.5" y1="52" x2="423.5" y2="190"><title>34 bit4_3and3</title></line>
+<line id="wire-35" inkscape:label="wire 35 bit3_2and3" data-kind="wire" data-wire="35" data-name="bit3_2and3" data-run="horizontal" x1="431.5" y1="77.5" x2="530.5" y2="77.5"><title>35 bit3_2and3</title></line>
+<line id="wire-36" inkscape:label="wire 36 bit3_3and3" data-kind="wire" data-wire="36" data-name="bit3_3and3" data-run="vertical" x1="433.5" y1="76" x2="433.5" y2="191.5"><title>36 bit3_3and3</title></line>
+<line id="wire-37" inkscape:label="wire 37 bit2_2and3" data-kind="wire" data-wire="37" data-name="bit2_2and3" data-run="horizontal" x1="441.5" y1="101.5" x2="540.5" y2="101.5"><title>37 bit2_2and3</title></line>
+<line id="wire-38" inkscape:label="wire 38 bit2_3and3" data-kind="wire" data-wire="38" data-name="bit2_3and3" data-run="vertical" x1="443.5" y1="100" x2="443.5" y2="191.5"><title>38 bit2_3and3</title></line>
+<line id="wire-39" inkscape:label="wire 39 bit1_2and3" data-kind="wire" data-wire="39" data-name="bit1_2and3" data-run="horizontal" x1="451" y1="125.5" x2="550" y2="125.5"><title>39 bit1_2and3</title></line>
+<line id="wire-40" inkscape:label="wire 40 bit1_3and3" data-kind="wire" data-wire="40" data-name="bit1_3and3" data-run="vertical" x1="453.5" y1="124" x2="453.5" y2="189.5"><title>40 bit1_3and3</title></line>
+<line id="wire-41" inkscape:label="wire 41 bit0_2and3" data-kind="wire" data-wire="41" data-name="bit0_2and3" data-run="horizontal" x1="461.5" y1="146.5" x2="560.5" y2="146.5"><title>41 bit0_2and3</title></line>
+<line id="wire-42" inkscape:label="wire 42 bit0_3and3" data-kind="wire" data-wire="42" data-name="bit0_3and3" data-run="vertical" x1="462.5" y1="145" x2="462.5" y2="185.5"><title>42 bit0_3and3</title></line>
+<line id="wire-43" inkscape:label="wire 43 bit5_2and4" data-kind="wire" data-wire="43" data-name="bit5_2and4" data-run="horizontal" x1="508.5" y1="29.5" x2="689.5" y2="29.5"><title>43 bit5_2and4</title></line>
+<line id="wire-44" inkscape:label="wire 44 bit5_3and4" data-kind="wire" data-wire="44" data-name="bit5_3and4" data-run="vertical" x1="508.5" y1="28" x2="508.5" y2="185.5"><title>44 bit5_3and4</title></line>
+<line id="wire-45" inkscape:label="wire 45 bit4_2and4" data-kind="wire" data-wire="45" data-name="bit4_2and4" data-run="horizontal" x1="517.5" y1="53.5" x2="689.5" y2="53.5"><title>45 bit4_2and4</title></line>
+<line id="wire-46" inkscape:label="wire 46 bit4_3and4" data-kind="wire" data-wire="46" data-name="bit4_3and4" data-run="vertical" x1="518.5" y1="52" x2="518.5" y2="190"><title>46 bit4_3and4</title></line>
+<line id="wire-47" inkscape:label="wire 47 bit3_2and4" data-kind="wire" data-wire="47" data-name="bit3_2and4" data-run="horizontal" x1="527.5" y1="77.5" x2="689.5" y2="77.5"><title>47 bit3_2and4</title></line>
+<line id="wire-48" inkscape:label="wire 48 bit3_3and4" data-kind="wire" data-wire="48" data-name="bit3_3and4" data-run="vertical" x1="528.5" y1="76" x2="528.5" y2="191.5"><title>48 bit3_3and4</title></line>
+<line id="wire-49" inkscape:label="wire 49 bit2_2and4" data-kind="wire" data-wire="49" data-name="bit2_2and4" data-run="horizontal" x1="537.5" y1="101.5" x2="689.5" y2="101.5"><title>49 bit2_2and4</title></line>
+<line id="wire-50" inkscape:label="wire 50 bit2_3and4" data-kind="wire" data-wire="50" data-name="bit2_3and4" data-run="vertical" x1="538.5" y1="100" x2="538.5" y2="191.5"><title>50 bit2_3and4</title></line>
+<line id="wire-51" inkscape:label="wire 51 bit1_2and4" data-kind="wire" data-wire="51" data-name="bit1_2and4" data-run="horizontal" x1="547" y1="125.5" x2="689.5" y2="125.5"><title>51 bit1_2and4</title></line>
+<line id="wire-52" inkscape:label="wire 52 bit1_3and4" data-kind="wire" data-wire="52" data-name="bit1_3and4" data-run="vertical" x1="548.5" y1="124" x2="548.5" y2="190"><title>52 bit1_3and4</title></line>
+<line id="wire-53" inkscape:label="wire 53 bit0_2and4" data-kind="wire" data-wire="53" data-name="bit0_2and4" data-run="horizontal" x1="557.5" y1="146.5" x2="689.5" y2="146.5"><title>53 bit0_2and4</title></line>
+<line id="wire-54" inkscape:label="wire 54 bit0_3and4" data-kind="wire" data-wire="54" data-name="bit0_3and4" data-run="vertical" x1="558.5" y1="145" x2="558.5" y2="185.5"><title>54 bit0_3and4</title></line>
+<line id="wire-55" inkscape:label="wire 55 and1_out" data-kind="wire" data-wire="55" data-name="and1_out" data-run="vertical" x1="237.5" y1="192.5" x2="237.5" y2="242"><title>55 and1_out</title></line>
+<line id="wire-56" inkscape:label="wire 56 and2_out" data-kind="wire" data-wire="56" data-name="and2_out" data-run="vertical" x1="342.5" y1="192.5" x2="342.5" y2="258"><title>56 and2_out</title></line>
+<line id="wire-57" inkscape:label="wire 57 and3_out" data-kind="wire" data-wire="57" data-name="and3_out" data-run="vertical" x1="436.5" y1="191.5" x2="436.5" y2="286"><title>57 and3_out</title></line>
+<line id="wire-58" inkscape:label="wire 58 and4_out" data-kind="wire" data-wire="58" data-name="and4_out" data-run="vertical" x1="533.5" y1="191.5" x2="533.5" y2="431.3"><title>58 and4_out</title></line>
+<line id="wire-59" inkscape:label="wire 59 and1_out2" data-kind="wire" data-wire="59" data-name="and1_out2" data-run="vertical" x1="237.5" y1="239" x2="237.5" y2="339"><title>59 and1_out2</title></line>
+<line id="wire-60" inkscape:label="wire 60 regDst" data-kind="wire" data-wire="60" data-name="regDst" data-run="horizontal" x1="236" y1="240.5" x2="796.5" y2="240.5"><title>60 regDst</title></line>
+<line id="wire-61" inkscape:label="wire 61 and1_out3" data-kind="wire" data-wire="61" data-name="and1_out3" data-run="vertical" x1="237.5" y1="336" x2="237.5" y2="451"><title>61 and1_out3</title></line>
+<line id="wire-62" inkscape:label="wire 62 regDst" data-kind="wire" data-wire="62" data-name="regDst" data-run="horizontal" x1="236" y1="337.5" x2="598.5" y2="337.5"><title>62 regDst</title></line>
+<line id="wire-63" inkscape:label="wire 63 and2_out2" data-kind="wire" data-wire="63" data-name="and2_out2" data-run="vertical" x1="342.5" y1="255" x2="342.5" y2="311"><title>63 and2_out2</title></line>
+<line id="wire-64" inkscape:label="wire 64 or1_in1" data-kind="wire" data-wire="64" data-name="or1_in1" data-run="horizontal" x1="341" y1="256.5" x2="598" y2="256.5"><title>64 or1_in1</title></line>
+<line id="wire-65" inkscape:label="wire 65 and2_out3" data-kind="wire" data-wire="65" data-name="and2_out3" data-run="vertical" x1="342.5" y1="307" x2="342.5" y2="363"><title>65 and2_out3</title></line>
+<line id="wire-66" inkscape:label="wire 66 and2_out4" data-kind="wire" data-wire="66" data-name="and2_out4" data-run="vertical" x1="342.5" y1="360" x2="342.5" y2="387"><title>66 and2_out4</title></line>
+<line id="wire-68" inkscape:label="wire 68 or2_in2" data-kind="wire" data-wire="68" data-name="or2_in2" data-run="horizontal" x1="341" y1="361.5" x2="596.5" y2="361.5"><title>68 or2_in2</title></line>
+<line id="wire-69" inkscape:label="wire 69 memToReg" data-kind="wire" data-wire="69" data-name="memToReg" data-run="horizontal" x1="341" y1="309.5" x2="796.5" y2="309.5"><title>69 memToReg</title></line>
+<line id="wire-70" inkscape:label="wire 70 readMem" data-kind="wire" data-wire="70" data-name="readMem" data-run="horizontal" x1="341" y1="385.5" x2="796.5" y2="385.5"><title>70 readMem</title></line>
+<line id="wire-71" inkscape:label="wire 71 and3_out2" data-kind="wire" data-wire="71" data-name="and3_out2" data-run="vertical" x1="436.5" y1="282" x2="436.5" y2="406"><title>71 and3_out2</title></line>
+<line id="wire-72" inkscape:label="wire 72 or1_in2" data-kind="wire" data-wire="72" data-name="or1_in2" data-run="horizontal" x1="435" y1="284.5" x2="597" y2="284.5"><title>72 or1_in2</title></line>
+<line id="wire-74" inkscape:label="wire 74 writeMem" data-kind="wire" data-wire="74" data-name="writeMem" data-run="horizontal" x1="435" y1="404.5" x2="796.5" y2="404.5"><title>74 writeMem</title></line>
+<line id="wire-75" inkscape:label="wire 75 branch" data-kind="wire" data-wire="75" data-name="branch" data-run="horizontal" x1="532" y1="426.5" x2="796.5" y2="426.5"><title>75 branch</title></line>
+<line id="wire-76" inkscape:label="wire 76 and4_out2" data-kind="wire" data-wire="76" data-name="and4_out2" data-run="vertical" x1="533.5" y1="425" x2="533.5" y2="473"><title>76 and4_out2</title></line>
+<line id="wire-77" inkscape:label="wire 77 opALU0" data-kind="wire" data-wire="77" data-name="opALU0" data-run="horizontal" x1="532" y1="471.5" x2="796.5" y2="471.5"><title>77 opALU0</title></line>
+<line id="wire-78" inkscape:label="wire 78 OpAlu1" data-kind="wire" data-wire="78" data-name="OpAlu1" data-run="horizontal" x1="236" y1="449.5" x2="796.5" y2="449.5"><title>78 OpAlu1</title></line>
+<line id="wire-79" inkscape:label="wire 79 or1_out" data-kind="wire" data-wire="79" data-name="or1_out" data-run="horizontal" x1="604.5" y1="267.5" x2="796.5" y2="267.5"><title>79 or1_out</title></line>
+<line id="wire-80" inkscape:label="wire 80 writeReg" data-kind="wire" data-wire="80" data-name="writeReg" data-run="horizontal" x1="604" y1="346.5" x2="796.5" y2="346.5"><title>80 writeReg</title></line>
+</g>
+<g id="captions" inkscape:groupmode="layer" inkscape:label="captions" fill="#cdd0d7">
+<text id="text-0" inkscape:label="caption 0 BIT 5" data-kind="caption" data-caption="0" x="2" y="19" font-size="13" text-anchor="start" font-weight="700">BIT 5</text>
+<text id="text-1" inkscape:label="caption 1 BIT 4" data-kind="caption" data-caption="1" x="2" y="44" font-size="13" text-anchor="start" font-weight="700">BIT 4</text>
+<text id="text-2" inkscape:label="caption 2 BIT 3" data-kind="caption" data-caption="2" x="2" y="68" font-size="13" text-anchor="start" font-weight="700">BIT 3</text>
+<text id="text-3" inkscape:label="caption 3 BIT 2" data-kind="caption" data-caption="3" x="2" y="91" font-size="13" text-anchor="start" font-weight="700">BIT 2</text>
+<text id="text-4" inkscape:label="caption 4 BIT 1" data-kind="caption" data-caption="4" x="2" y="115" font-size="13" text-anchor="start" font-weight="700">BIT 1</text>
+<text id="text-5" inkscape:label="caption 5 BIT 0" data-kind="caption" data-caption="5" x="2" y="137" font-size="13" text-anchor="start" font-weight="700">BIT 0</text>
+<text id="text-6" inkscape:label="caption 6 RegDst" data-kind="caption" data-caption="6" x="706" y="226" font-size="13" text-anchor="start" font-weight="700">RegDst</text>
+<text id="text-7" inkscape:label="caption 7 ALUSrc" data-kind="caption" data-caption="7" x="706" y="257" font-size="13" text-anchor="start" font-weight="700">ALUSrc</text>
+<text id="text-8" inkscape:label="caption 8 MemToReg" data-kind="caption" data-caption="8" x="706" y="297" font-size="13" text-anchor="start" font-weight="700">MemToReg</text>
+<text id="text-9" inkscape:label="caption 9 WriteReg" data-kind="caption" data-caption="9" x="706" y="336" font-size="13" text-anchor="start" font-weight="700">WriteReg</text>
+<text id="text-10" inkscape:label="caption 10 ReadMem" data-kind="caption" data-caption="10" x="706" y="374" font-size="13" text-anchor="start" font-weight="700">ReadMem</text>
+<text id="text-11" inkscape:label="caption 11 WriteMem" data-kind="caption" data-caption="11" x="706" y="395" font-size="13" text-anchor="start" font-weight="700">WriteMem</text>
+<text id="text-12" inkscape:label="caption 12 Branch" data-kind="caption" data-caption="12" x="706" y="415" font-size="13" text-anchor="start" font-weight="700">Branch</text>
+<text id="text-13" inkscape:label="caption 13 opALU1" data-kind="caption" data-caption="13" x="706" y="438" font-size="13" text-anchor="start" font-weight="700">opALU1</text>
+<text id="text-14" inkscape:label="caption 14 opALU0" data-kind="caption" data-caption="14" x="706" y="461" font-size="13" text-anchor="start" font-weight="700">opALU0</text>
+</g>
+<g id="derived" inkscape:groupmode="layer" inkscape:label="derived (not read back)" pointer-events="none">
+<circle fill="#ffffff" cx="212.5" cy="29.5" r="3"/>
+<circle fill="#ffffff" cx="223.5" cy="53.5" r="3"/>
+<circle fill="#ffffff" cx="232.5" cy="77.5" r="3"/>
+<circle fill="#ffffff" cx="237.5" cy="240.5" r="3"/>
+<circle fill="#ffffff" cx="237.5" cy="337.5" r="3"/>
+<circle fill="#ffffff" cx="237.5" cy="449.5" r="3"/>
+<circle fill="#ffffff" cx="243.5" cy="101.5" r="3"/>
+<circle fill="#ffffff" cx="253.5" cy="125.5" r="3"/>
+<circle fill="#ffffff" cx="263.5" cy="146.5" r="3"/>
+<circle fill="#ffffff" cx="317.5" cy="29.5" r="3"/>
+<circle fill="#ffffff" cx="326.5" cy="53.5" r="3"/>
+<circle fill="#ffffff" cx="337.5" cy="77.5" r="3"/>
+<circle fill="#ffffff" cx="342.5" cy="256.5" r="3"/>
+<circle fill="#ffffff" cx="342.5" cy="309.5" r="3"/>
+<circle fill="#ffffff" cx="342.5" cy="361.5" r="3"/>
+<circle fill="#ffffff" cx="342.5" cy="385.5" r="3"/>
+<circle fill="#ffffff" cx="347.5" cy="101.5" r="3"/>
+<circle fill="#ffffff" cx="358.5" cy="125.5" r="3"/>
+<circle fill="#ffffff" cx="368.5" cy="146.5" r="3"/>
+<circle fill="#ffffff" cx="413.5" cy="29.5" r="3"/>
+<circle fill="#ffffff" cx="423.5" cy="53.5" r="3"/>
+<circle fill="#ffffff" cx="433.5" cy="77.5" r="3"/>
+<circle fill="#ffffff" cx="436.5" cy="284.5" r="3"/>
+<circle fill="#ffffff" cx="436.5" cy="404.5" r="3"/>
+<circle fill="#ffffff" cx="443.5" cy="101.5" r="3"/>
+<circle fill="#ffffff" cx="453.5" cy="125.5" r="3"/>
+<circle fill="#ffffff" cx="462.5" cy="146.5" r="3"/>
+<circle fill="#ffffff" cx="508.5" cy="29.5" r="3"/>
+<circle fill="#ffffff" cx="518.5" cy="53.5" r="3"/>
+<circle fill="#ffffff" cx="528.5" cy="77.5" r="3"/>
+<circle fill="#ffffff" cx="533.5" cy="426.5" r="3"/>
+<circle fill="#ffffff" cx="533.5" cy="471.5" r="3"/>
+<circle fill="#ffffff" cx="538.5" cy="101.5" r="3"/>
+<circle fill="#ffffff" cx="548.5" cy="125.5" r="3"/>
+<circle fill="#ffffff" cx="558.5" cy="146.5" r="3"/>
+</g>
+</svg>
