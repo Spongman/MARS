@@ -1,0 +1,180 @@
+import { describe, expect, it } from 'vitest'
+import { BranchHistoryTable } from '../branchHistory'
+import { CacheSimulator } from '../cache'
+import { DEFAULT_PIPELINE_SETTINGS, PipelineModel } from '../pipeline'
+import { ExecutionProfile, HEAT_LEVELS, heatLevel } from '../profile'
+import { InstructionStatistics, categoryOf } from '../statistics'
+import { build, withExit } from '../../core/__tests__/helpers'
+
+describe('instruction statistics', () => {
+	it('sorts every executed instruction into one category', async () => {
+		const simulator = build(withExit('li $t0, 1\nlw $t1, 0($sp)\nsw $t1, 4($sp)\nj next\nnext:\nbeq $t0, $t0, done\ndone:'))
+		const statistics = new InstructionStatistics()
+		simulator.observers.push(statistics)
+		await simulator.run()
+
+		const snapshot = statistics.snapshot()
+		const summed = Object.values(snapshot.byCategory).reduce((total, count) => total + count, 0)
+		expect(summed).toBe(snapshot.total)
+		expect(snapshot.total).toBe(simulator.instructionCount)
+		expect(snapshot.byCategory.memory).toBe(2)
+		expect(snapshot.byCategory.jump).toBe(1)
+		expect(snapshot.byCategory.branch).toBe(1)
+	})
+
+	it('counts each mnemonic and ranks the commonest first', async () => {
+		const simulator = build(withExit('li $t0, 3\nloop:\naddi $t0, $t0, -1\nbne $t0, $zero, loop'))
+		const statistics = new InstructionStatistics()
+		simulator.observers.push(statistics)
+		await simulator.run()
+
+		const counts = new Map(statistics.snapshot().byMnemonic.map((entry) => [entry.op, entry.count]))
+		expect(counts.get('ADDI')).toBe(3)
+		expect(counts.get('BNE')).toBe(3)
+		expect(statistics.snapshot().byMnemonic[0].count).toBeGreaterThanOrEqual(3)
+	})
+
+	it('files coprocessor work under its own category', () => {
+		expect(categoryOf('ADD.S')).toBe('coprocessor')
+		expect(categoryOf('MFC1')).toBe('coprocessor')
+		expect(categoryOf('ADD')).toBe('alu')
+		expect(categoryOf('SYSCALL')).toBe('other')
+	})
+})
+
+describe('cache simulator', () => {
+	it('misses once per block, then hits within it', () => {
+		const cache = new CacheSimulator({ blockCount: 4, blockSizeBytes: 16, associativity: 1, replacement: 'lru' })
+		for (let offset = 0; offset < 16; offset += 4) cache.access(0x10010000 + offset)
+
+		const snapshot = cache.snapshot()
+		expect(snapshot.accesses).toBe(4)
+		expect(snapshot.misses).toBe(1)
+		expect(snapshot.hits).toBe(3)
+		expect(snapshot.hitRate).toBeCloseTo(0.75)
+	})
+
+	it('thrashes when two addresses collide in a direct-mapped set', () => {
+		const cache = new CacheSimulator({ blockCount: 2, blockSizeBytes: 16, associativity: 1, replacement: 'lru' })
+		// 0x000 and 0x020 are two blocks apart, so both land in set 0.
+		for (let round = 0; round < 4; round++) {
+			cache.access(0x10010000)
+			cache.access(0x10010020)
+		}
+		expect(cache.snapshot().hits).toBe(0)
+	})
+
+	it('holds both lines once the same set is two-way associative', () => {
+		const cache = new CacheSimulator({ blockCount: 2, blockSizeBytes: 16, associativity: 2, replacement: 'lru' })
+		for (let round = 0; round < 4; round++) {
+			cache.access(0x10010000)
+			cache.access(0x10010020)
+		}
+		expect(cache.snapshot().hits).toBe(6)
+	})
+
+	it('counts the accesses a running program makes', async () => {
+		const simulator = build(withExit('li $t0, 1\nsw $t0, 0($sp)\nlw $t1, 0($sp)\nlw $t2, 0($sp)'))
+		const cache = new CacheSimulator()
+		simulator.observers.push(cache)
+		await simulator.run()
+
+		const snapshot = cache.snapshot()
+		expect(snapshot.accesses).toBe(3)
+		expect(snapshot.misses).toBe(1)
+	})
+})
+
+describe('branch history table', () => {
+	it('predicts a loop correctly except at its edges', async () => {
+		const simulator = build(withExit('li $t0, 10\nloop:\naddi $t0, $t0, -1\nbne $t0, $zero, loop'))
+		const table = new BranchHistoryTable({ entryCount: 8, historyBits: 2, initiallyTaken: false })
+		simulator.observers.push(table)
+		await simulator.run()
+
+		const snapshot = table.snapshot()
+		expect(snapshot.predictions).toBe(10)
+		// Two-bit counter: wrong for the first two, right until the exit misses.
+		expect(snapshot.correct).toBe(7)
+		expect(snapshot.accuracy).toBeCloseTo(0.7)
+	})
+
+	it('changes its mind at once with a one-bit counter', async () => {
+		const simulator = build(withExit('li $t0, 10\nloop:\naddi $t0, $t0, -1\nbne $t0, $zero, loop'))
+		const table = new BranchHistoryTable({ entryCount: 8, historyBits: 1, initiallyTaken: false })
+		simulator.observers.push(table)
+		await simulator.run()
+
+		// One bit is wrong only on the first taken branch and the final exit.
+		expect(table.snapshot().correct).toBe(8)
+	})
+
+	it('starts from the configured prediction', async () => {
+		const simulator = build(withExit('li $t0, 10\nloop:\naddi $t0, $t0, -1\nbne $t0, $zero, loop'))
+		const table = new BranchHistoryTable({ entryCount: 8, historyBits: 2, initiallyTaken: true })
+		simulator.observers.push(table)
+		await simulator.run()
+
+		// Predicting taken from the start costs only the loop exit.
+		expect(table.snapshot().correct).toBe(9)
+	})
+
+	it('records which branches share an entry', async () => {
+		const simulator = build(withExit('li $t0, 1\nbeq $t0, $t0, next\nnext:\nbne $t0, $zero, done\ndone:'))
+		const table = new BranchHistoryTable({ entryCount: 4, historyBits: 2, initiallyTaken: false })
+		simulator.observers.push(table)
+		await simulator.run()
+
+		const used = table.snapshot().entries.filter((entry) => entry.predictions > 0)
+		expect(used).toHaveLength(2)
+		expect(used.every((entry) => entry.addresses.length === 1)).toBe(true)
+	})
+})
+
+describe('execution profile', () => {
+	it('counts every execution of each address and finds the hottest', async () => {
+		const simulator = build(withExit('li $t0, 3\nloop:\naddi $t0, $t0, -1\nbne $t0, $zero, loop'))
+		const profile = new ExecutionProfile()
+		simulator.observers.push(profile)
+		await simulator.run()
+
+		const snapshot = profile.snapshot()
+		expect(snapshot.total).toBe(simulator.instructionCount)
+		const counts = [...snapshot.byAddress.values()].map((entry) => entry.count)
+		expect(counts.reduce((total, count) => total + count, 0)).toBe(snapshot.total)
+		expect(snapshot.max).toBe(3)
+
+		// The branch runs three times and falls through only on the last.
+		const branch = [...snapshot.byAddress.values()].find((entry) => entry.taken + entry.notTaken > 0)
+		expect(branch).toEqual({ count: 3, taken: 2, notTaken: 1 })
+	})
+
+	it('scales heat logarithmically, with the hottest instruction at the top', () => {
+		expect(heatLevel(0, 1000)).toBe(-1)
+		expect(heatLevel(1000, 1000)).toBe(HEAT_LEVELS - 1)
+		expect(heatLevel(1, 1000)).toBe(0)
+		// A tenth of the peak still reads warm, which a linear scale would not.
+		expect(heatLevel(100, 1000)).toBe(4)
+	})
+})
+
+describe('pipeline profile', () => {
+	it('attributes stalls and mispredictions to the instruction that caused them', async () => {
+		const simulator = build(withExit('li $t0, 2\nloop:\naddi $t0, $t0, -1\nbne $t0, $zero, loop'))
+		const pipeline = new PipelineModel({ ...DEFAULT_PIPELINE_SETTINGS, dataHazards: 'none' })
+		simulator.observers.push(pipeline)
+		await simulator.run()
+
+		const snapshot = pipeline.snapshot()
+		const addi = snapshot.rows.find((row) => row.op === 'ADDI' && row.stalls > 0)
+		expect(addi).toBeDefined()
+		const stats = snapshot.byAddress.get(addi!.address)
+		expect(stats?.stalls).toBeGreaterThan(0)
+
+		const branch = snapshot.rows.find((row) => row.op === 'BNE')
+		const branchStats = snapshot.byAddress.get(branch!.address)
+		expect(branchStats?.branches).toBe(2)
+		// With no predictor the front end falls through, so a taken branch is a miss.
+		expect(branchStats?.mispredictions).toBe(1)
+	})
+})
