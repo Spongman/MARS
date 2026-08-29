@@ -1,0 +1,44 @@
+.dock-layout {
+	flex: 1;
+	min-height: 0;
+	/* 2px tighter top and bottom than dockview's 35px default. */
+	--dv-tabs-and-actions-container-height: 31px;
+}
+
+.dock-panel {
+	height: 100%;
+	overflow: auto;
+	padding: 10px;
+	box-sizing: border-box;
+	background: var(--surface-base);
+}
+
+.dock-panel-flush {
+	padding: 0;
+	overflow: hidden;
+}
+
+/* The console asks to be noticed while it is hidden: once for output, and
+   until it is opened for input. */
+@keyframes console-tab-flash {
+	from {
+		background: var(--accent);
+		color: var(--text-bright);
+	}
+	to {
+		background: transparent;
+	}
+}
+
+.console-tab-output {
+	animation: console-tab-flash 1.1s ease-out 1;
+}
+
+.console-tab-input {
+	animation: console-tab-flash 1.1s ease-in-out infinite;
+}
+
+/* The rename hook wraps a file's tab without taking part in its layout. */
+.source-tab {
+	display: contents;
+}

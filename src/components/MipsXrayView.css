@@ -1,0 +1,98 @@
+/* The drawing scales to whatever room the panel has, rather than scrolling. */
+.xray-scroll {
+	display: flex;
+	flex: 1;
+	min-height: 0;
+	padding: 0;
+}
+
+/*
+ * The drawing is inline SVG rather than a bitmap, so every colour in it comes
+ * from the same tokens as the rest of the workspace.
+ */
+.xray-drawing {
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
+	background: var(--surface-base);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	display: block;
+	font-family: var(--font-sans);
+}
+
+.xray-panel {
+	fill: var(--xray-panel);
+	stroke: var(--border);
+}
+
+.xray-block {
+	fill: var(--xray-block);
+	stroke: var(--xray-block-border);
+	stroke-width: 1.5;
+}
+
+.xray-gate {
+	fill: var(--xray-block);
+	stroke: var(--xray-block-border);
+	stroke-width: 1.5;
+}
+
+.xray-block-rule {
+	stroke: var(--xray-block-border);
+	stroke-width: 1;
+}
+
+.xray-block-label {
+	fill: var(--text-primary);
+	text-anchor: middle;
+	dominant-baseline: middle;
+}
+
+.xray-block-caption,
+.xray-block-note {
+	fill: var(--text-muted);
+	dominant-baseline: middle;
+}
+
+/* The unlit wiring, which the animation lights up over the top of. */
+.xray-wires line {
+	stroke: var(--xray-wire);
+}
+
+.xray-junctions circle {
+	fill: var(--xray-junction);
+}
+
+.xray-arrows polygon {
+	fill: var(--xray-wire);
+}
+
+.xray-live line {
+	stroke-linecap: butt;
+}
+
+.xray-caption {
+	fill: var(--text-secondary);
+	dominant-baseline: middle;
+}
+
+.xray-caption-strong {
+	fill: var(--text-primary);
+	font-weight: 600;
+}
+
+.xray-annotation {
+	font-family: var(--font-mono);
+}
+
+.xray-annotation-title {
+	font-family: var(--font-sans);
+	font-weight: 700;
+}
+
+.xray-instruction {
+	color: var(--text-secondary);
+	font-family: var(--font-mono);
+	margin-left: auto;
+}

@@ -1,107 +1,261 @@
 .toolbar {
-  display: flex;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #252526;
-  border-bottom: 1px solid #404040;
-  align-items: center;
-  position: relative;
+	display: flex;
+	gap: 6px;
+	padding: 5px 8px;
+	background: var(--surface-raised);
+	border-bottom: 1px solid var(--border);
+	align-items: center;
+	position: relative;
 }
 
 .btn {
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-weight: 500;
-  white-space: nowrap;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: var(--control-height);
+	padding: 0 10px;
+	background: var(--surface-input);
+	border: none;
+	border-radius: var(--radius);
+	color: var(--text-primary);
+	font-size: 12px;
+	cursor: pointer;
+	transition: background 0.15s;
+	white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+	background: var(--surface-input-hover);
+}
+
+.btn-icon {
+	width: 28px;
+	padding: 0;
+	font-size: 14px;
+}
+
+/* Stepping controls read as one segmented control. */
+.btn-group {
+	display: flex;
+}
+
+.btn-group .btn {
+	border-radius: 0;
+	border-right: 1px solid var(--surface-overlay);
+}
+
+.btn-group .btn:first-child {
+	border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.btn-group .btn:last-child {
+	border-right: none;
+	border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.toolbar-separator {
+	width: 1px;
+	align-self: stretch;
+	margin: 2px 2px;
+	background: var(--border);
 }
 
 .btn-primary {
-  background: #007acc;
-  color: white;
+	background: var(--accent);
+	color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #0098ff;
+	background: var(--accent-hover);
 }
 
 .btn-primary:active:not(:disabled) {
-  background: #005a9e;
+	background: var(--accent-active);
 }
 
 .btn-secondary {
-  background: #3e3e42;
-  color: #e0e0e0;
+	background: var(--surface-input);
+	color: var(--text-primary);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #4e4e54;
+	background: var(--surface-input-hover);
 }
 
 .btn-secondary:active:not(:disabled) {
-  background: #2d2d30;
+	background: var(--surface-overlay);
 }
 
 .btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .spacer {
-  flex: 1;
+	flex: 1;
+}
+
+.storage-message {
+	color: var(--data-register);
+	font-size: 12px;
+	white-space: nowrap;
 }
 
 .example-dropdown {
-  position: relative;
+	position: relative;
 }
 
 .dropdown-menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  background: #2d2d30;
-  border: 1px solid #404040;
-  border-radius: 4px;
-  min-width: 250px;
-  max-width: 350px;
-  z-index: 1000;
-  margin-top: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+	position: absolute;
+	top: 100%;
+	right: 0;
+	background: var(--surface-overlay);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	min-width: 250px;
+	max-width: 350px;
+	z-index: 1000;
+	margin-top: 4px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 .dropdown-item {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  padding: 12px;
-  background: none;
-  border: none;
-  border-bottom: 1px solid #3e3e42;
-  color: #e0e0e0;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.2s;
-  font-size: 12px;
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	padding: 12px;
+	background: none;
+	border: none;
+	border-bottom: 1px solid var(--surface-input);
+	color: var(--text-primary);
+	cursor: pointer;
+	text-align: left;
+	transition: background 0.2s;
+	font-size: 12px;
 }
 
 .dropdown-item:last-child {
-  border-bottom: none;
+	border-bottom: none;
 }
 
 .dropdown-item:hover {
-  background: #3e3e42;
+	background: var(--surface-input);
 }
 
 .item-name {
-  font-weight: 600;
-  margin-bottom: 4px;
-  color: #007acc;
+	font-weight: 600;
+	margin-bottom: 4px;
+	color: var(--accent);
 }
 
 .item-desc {
-  font-size: 11px;
-  color: #858585;
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+.toolbar-toggle {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 12px;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.toolbar-toggle input {
+	cursor: pointer;
+}
+
+.toolbar-speed {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--text-secondary);
+}
+
+.toolbar-speed input[type='range'] {
+	width: 110px;
+	accent-color: var(--accent);
+}
+
+.toolbar-speed-icon {
+	font-size: 13px;
+	line-height: 1;
+}
+
+.toolbar-speed-value {
+	font-family: var(--font-mono);
+	min-width: 56px;
+}
+
+/* Pressed state for a toolbar button that stays on, such as Find. */
+.btn-active,
+.btn-active:hover:not(:disabled) {
+	background: var(--accent);
+	color: var(--text-bright);
+}
+
+.gutter-toggles {
+	display: flex;
+}
+
+.gutter-toggle {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: var(--control-height);
+	padding: 0;
+	background: var(--surface-input);
+	border: 1px solid var(--border-strong);
+	border-right-width: 0;
+	color: var(--text-primary);
+	cursor: pointer;
+	font: inherit;
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.gutter-toggle:first-child {
+	border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.gutter-toggle:last-child {
+	border-right-width: 1px;
+	border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.gutter-toggle:hover:not(:disabled) {
+	background: var(--border-strong);
+}
+
+/* A toggle that only qualifies another one reads as unavailable while that one
+   is off, rather than disappearing. */
+.gutter-toggle:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.gutter-toggle.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--text-bright);
+}
+
+.gutter-toggle.active:hover {
+	background: var(--accent-hover);
+}
+
+.toggle-icon {
+	width: 14px;
+	height: 14px;
+	display: block;
+	fill: currentColor;
+}
+
+/* Two selected neighbours share a blue edge, so draw the seam explicitly. */
+.gutter-toggle.active + .gutter-toggle.active {
+	border-left-color: var(--accent-active);
 }

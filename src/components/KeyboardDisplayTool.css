@@ -1,0 +1,71 @@
+.keyboard-display-tool {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 0;
+	color: var(--text-primary);
+	font-size: 12px;
+}
+
+.keyboard-display-help {
+	margin: 0;
+	color: var(--text-secondary);
+	line-height: 1.45;
+}
+
+.keyboard-display-help code {
+	color: var(--data-register);
+}
+
+.keyboard-display-status {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	background: var(--surface-raised);
+	color: var(--data-number);
+}
+
+.keyboard-display-output {
+	box-sizing: border-box;
+	min-height: 150px;
+	max-height: 280px;
+	margin: 0;
+	padding: 8px;
+	overflow: auto;
+	border: 1px solid var(--border);
+	background: var(--surface-base);
+	color: var(--text-primary);
+	font-family: Consolas, 'Courier New', monospace;
+	white-space: pre-wrap;
+}
+
+.keyboard-display-input {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 6px;
+}
+
+.keyboard-display-input label {
+	grid-column: 1 / -1;
+}
+
+.keyboard-display-input input,
+.keyboard-display-input button {
+	box-sizing: border-box;
+	min-width: 0;
+	padding: 6px 8px;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	background: var(--surface-input);
+	color: var(--text-primary);
+}
+
+.keyboard-display-input button {
+	cursor: pointer;
+}
+
+.keyboard-display-input button:hover {
+	background: var(--border-strong);
+}

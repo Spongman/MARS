@@ -1,81 +1,240 @@
 .memory-view {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  height: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	height: 100%;
+	padding: 10px;
+	box-sizing: border-box;
+	position: relative;
 }
 
-.memory-search {
-  display: flex;
-  gap: 4px;
+.memory-probe {
+	position: absolute;
+	visibility: hidden;
+	white-space: pre;
+	font-family: 'Courier New', monospace;
+	font-size: 12px;
 }
 
-.memory-search input {
-  flex: 1;
-  padding: 4px 8px;
-  background: #3e3e42;
-  border: 1px solid #404040;
-  color: #e0e0e0;
-  border-radius: 2px;
-  font-size: 12px;
+.memory-sections,
+.memory-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
 }
 
-.memory-search button {
-  padding: 4px 12px;
-  background: #007acc;
-  color: white;
-  border: none;
-  border-radius: 2px;
-  cursor: pointer;
-  font-size: 12px;
+.memory-section,
+.memory-group-size,
+.memory-go {
+	padding: 3px 8px;
+	background: var(--surface-input);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	color: var(--text-primary);
+	cursor: pointer;
+	font-size: 11px;
+	font-family: 'Courier New', monospace;
 }
 
-.memory-table {
-  flex: 1;
-  overflow-y: auto;
-  border: 1px solid #404040;
-  border-radius: 2px;
-  background: #1e1e1e;
+.memory-section:hover,
+.memory-group-size:hover,
+.memory-go:hover {
+	background: var(--border-strong);
 }
 
-.memory-header {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: #2d2d30;
-  padding: 6px 8px;
-  font-weight: 600;
-  font-size: 12px;
-  color: #007acc;
-  border-bottom: 1px solid #404040;
-  position: sticky;
-  top: 0;
+.memory-section.active,
+.memory-group-size.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: white;
 }
 
+.memory-group-sizes {
+	display: flex;
+	gap: 2px;
+}
+
+.memory-group-size {
+	min-width: 26px;
+}
+
+.memory-toggles {
+	display: flex;
+}
+
+.memory-toggle {
+	padding: 3px 8px;
+	background: var(--surface-input);
+	border: 1px solid var(--border-strong);
+	border-right-width: 0;
+	color: var(--text-primary);
+	cursor: pointer;
+	font-size: 11px;
+	font-family: 'Courier New', monospace;
+}
+
+.memory-toggle:first-child {
+	border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.memory-toggle:last-child {
+	border-right-width: 1px;
+	border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.memory-toggle:hover {
+	background: var(--border-strong);
+}
+
+.memory-toggle.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--text-bright);
+}
+
+/* Two selected neighbours share a blue edge, so draw the seam explicitly. */
+.memory-toggle.active + .memory-toggle.active {
+	border-left-color: var(--accent-active);
+}
+
+.memory-address-input {
+	flex: 1;
+	min-width: 90px;
+	padding: 3px 6px;
+	background: var(--surface-input);
+	border: 1px solid var(--border);
+	color: var(--text-primary);
+	border-radius: var(--radius);
+	font-size: 11px;
+	font-family: 'Courier New', monospace;
+}
+
+.memory-error {
+	color: var(--danger-text);
+	font-size: 12px;
+}
+
+.memory-grid {
+	/* clip-path makes this element the containing block for the fixed rows below
+	   and clips them to the grid, which overflow alone cannot do. */
+	clip-path: inset(0);
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface-base);
+}
+
+.memory-scroll {
+	position: relative;
+}
+
+.memory-rows {
+	position: absolute;
+	inset: 0;
+}
+
+/* Reports where fixed positioning resolves from, for the row offsets above. */
+.memory-origin {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 0;
+	height: 0;
+}
+
+/* Rows are positioned manually against the measured grid origin on every scroll. */
 .memory-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 6px 8px;
-  border-bottom: 1px solid #404040;
-  font-size: 12px;
-  font-family: 'Courier New', monospace;
+	position: fixed;
+	display: flex;
+	gap: 1ch;
+	height: 18px;
+	line-height: 18px;
+	padding: 0 8px;
+	white-space: pre;
+	font-family: 'Courier New', monospace;
+	font-size: 12px;
 }
 
-.memory-row:last-child {
-  border-bottom: none;
+.memory-row-address {
+	color: var(--data-register);
 }
 
-.col-address {
-  color: #9cdcfe;
-  font-weight: 500;
+.memory-row-groups {
+	display: flex;
+	gap: 1ch;
 }
 
-.col-value {
-  color: #ce9178;
+.memory-group {
+	color: var(--data-string);
+	cursor: default;
 }
 
-.memory-empty {
-  padding: 20px;
-  text-align: center;
-  color: #858585;
-  font-size: 12px;
+.memory-group.zero {
+	color: var(--text-disabled);
+}
+
+/* Word at the program counter. */
+.memory-group.current-instruction {
+	border-bottom: 2px solid var(--warning);
+}
+
+/* Instruction a live call frame returns to. */
+.memory-group.return-address {
+	border-bottom: 2px solid var(--data-label);
+}
+
+/* Stack word holding a live return address. */
+.memory-group.return-slot {
+	background: rgba(78, 201, 176, 0.18);
+	border-radius: var(--radius);
+}
+
+.memory-row-ascii {
+	color: var(--data-number);
+	cursor: default;
+}
+
+.memory-byte.hovered,
+.memory-char.hovered {
+	background: var(--accent-surface);
+	color: var(--text-bright);
+	border-radius: var(--radius);
+}
+
+.memory-tooltip {
+	position: fixed;
+	z-index: 10;
+	padding: 5px 8px;
+	background: var(--surface-raised);
+	border: 1px solid var(--accent);
+	border-radius: var(--radius);
+	color: var(--text-primary);
+	font-family: 'Courier New', monospace;
+	font-size: 11px;
+	line-height: 15px;
+	white-space: nowrap;
+	pointer-events: none;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.memory-tooltip-range {
+	margin-bottom: 3px;
+	color: var(--data-register);
+}
+
+.memory-tooltip span {
+	display: inline-block;
+	width: 7ch;
+	color: var(--text-muted);
+}
+
+.memory-status {
+	margin-left: auto;
+	color: var(--text-muted);
+	font-size: 11px;
+	font-family: 'Courier New', monospace;
+	white-space: nowrap;
 }

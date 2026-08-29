@@ -1,0 +1,241 @@
+.tool {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	font-size: 12px;
+	height: 100%;
+	overflow: auto;
+}
+
+.tool-settings {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px 14px;
+	align-items: center;
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--border);
+}
+
+.tool-settings label {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	color: var(--text-secondary);
+}
+
+.tool-settings select,
+.tool-settings input {
+	background: var(--surface-input);
+	color: var(--text-primary);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 2px 4px;
+	font-size: 12px;
+	font-family: inherit;
+}
+
+.tool-headline {
+	display: flex;
+	gap: 18px;
+	flex-wrap: wrap;
+}
+
+.tool-metric {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.tool-metric-value {
+	font-family: var(--font-mono);
+	font-size: 18px;
+	color: var(--text-primary);
+}
+
+.tool-metric-label {
+	color: var(--text-secondary);
+	text-transform: uppercase;
+	font-size: 10px;
+	letter-spacing: 0.06em;
+}
+
+.tool-bar-row {
+	display: grid;
+	grid-template-columns: 92px 1fr 64px;
+	gap: 8px;
+	align-items: center;
+	margin-bottom: 4px;
+}
+
+.tool-bar-track {
+	background: var(--surface-input);
+	border-radius: var(--radius);
+	height: 10px;
+	overflow: hidden;
+}
+
+.tool-bar-fill {
+	background: var(--accent);
+	height: 100%;
+}
+
+.tool-bar-value {
+	font-family: var(--font-mono);
+	text-align: right;
+	color: var(--text-secondary);
+}
+
+.tool table {
+	border-collapse: collapse;
+	width: 100%;
+	font-family: var(--font-mono);
+}
+
+.tool th {
+	text-align: left;
+	font-weight: normal;
+	color: var(--text-secondary);
+	font-family: var(--font-sans);
+	border-bottom: 1px solid var(--border);
+	padding: 3px 6px;
+}
+
+.tool td {
+	padding: 2px 6px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.tool td.numeric {
+	text-align: right;
+}
+
+.tool tr.tool-row-idle td {
+	color: var(--text-secondary);
+}
+
+.tool-empty {
+	color: var(--text-secondary);
+	font-style: italic;
+}
+
+.tool-blocks {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 3px;
+}
+
+.tool-block {
+	width: 22px;
+	height: 16px;
+	border-radius: var(--radius);
+	background: var(--surface-input);
+	border: 1px solid var(--border);
+}
+
+.tool-block.filled {
+	background: var(--accent);
+	border-color: var(--accent);
+}
+
+.tool-bits {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	font-family: var(--font-mono);
+}
+
+.tool-bit-group {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.tool-bit-group span {
+	letter-spacing: 0.14em;
+	word-break: break-all;
+}
+
+.tool-bit-group .tool-metric-label {
+	letter-spacing: 0.06em;
+}
+
+.tool-bit-sign { color: var(--danger-text) }
+.tool-bit-exponent { color: var(--data-function) }
+.tool-bit-fraction { color: var(--data-number) }
+
+/* Pipeline timeline: instructions down, cycles across. */
+/* A tool whose body is one scrolling surface, rather than the panel scrolling. */
+.tool.tool-fills {
+	overflow: hidden;
+}
+
+.pipeline-scroll {
+	overflow: auto;
+	flex: 1;
+	min-height: 90px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.pipeline-grid {
+	border-collapse: separate;
+	border-spacing: 1px;
+	width: auto;
+	font-size: 10px;
+}
+
+.pipeline-grid th,
+.pipeline-grid td {
+	border: 0;
+	padding: 0;
+}
+
+.pipeline-label {
+	position: sticky;
+	left: 0;
+	z-index: 1;
+	background: var(--surface-raised);
+	text-align: left;
+	font-family: var(--font-mono);
+	color: var(--text-primary);
+	padding: 0 8px 0 6px;
+	white-space: nowrap;
+	min-width: 72px;
+}
+
+.pipeline-row-stalled .pipeline-label {
+	color: var(--warning);
+}
+
+.pipeline-mispredict {
+	color: var(--danger);
+}
+
+.pipeline-cycle {
+	color: var(--text-muted);
+	font-family: var(--font-mono);
+	font-weight: normal;
+	min-width: 26px;
+	text-align: center;
+}
+
+.pipeline-stage {
+	width: 26px;
+	height: 16px;
+	text-align: center;
+	font-family: var(--font-mono);
+	color: var(--text-bright);
+	border-radius: var(--radius);
+}
+
+/* One hue per stage, so a row reads as a diagonal at a glance. */
+.pipeline-if { background: var(--stage-if) }
+.pipeline-id { background: var(--stage-id) }
+.pipeline-ex { background: var(--stage-ex) }
+.pipeline-mem { background: var(--stage-mem) }
+.pipeline-wb { background: var(--stage-wb) }
+
+.pipeline-stall {
+	background: var(--surface-input);
+	color: var(--warning);
+}

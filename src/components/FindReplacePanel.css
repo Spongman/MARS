@@ -1,0 +1,92 @@
+.find-replace-panel {
+	display: flex;
+	align-items: end;
+	gap: 12px;
+	padding: 8px 12px;
+	background: var(--surface-raised);
+	border-bottom: 1px solid var(--border);
+	color: var(--text-primary);
+	font-size: 12px;
+}
+
+.find-replace-fields {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(120px, 1fr));
+	gap: 8px;
+	flex: 1;
+}
+
+.find-replace-field {
+	display: grid;
+	gap: 3px;
+}
+
+.find-replace-field input {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 5px 7px;
+	background: var(--surface-input);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	color: inherit;
+	font: inherit;
+}
+
+.find-replace-field input:focus {
+	outline: 1px solid var(--accent);
+	border-color: var(--accent);
+}
+
+.find-replace-actions {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	white-space: nowrap;
+}
+
+.find-replace-actions button {
+	padding: 5px 8px;
+	background: var(--surface-input);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	color: inherit;
+	cursor: pointer;
+	font: inherit;
+}
+
+.find-replace-actions button:hover:not(:disabled) {
+	background: var(--border-strong);
+}
+
+.find-replace-actions button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.find-replace-case {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.find-replace-count {
+	min-width: 58px;
+	color: var(--text-secondary);
+	text-align: right;
+}
+
+.find-replace-close {
+	font-size: 16px !important;
+	line-height: 14px;
+}
+
+@media (max-width: 800px) {
+	.find-replace-panel {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.find-replace-actions {
+		flex-wrap: wrap;
+	}
+}

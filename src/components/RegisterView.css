@@ -1,49 +1,156 @@
 .register-view {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
 }
 
 .register-group {
-  border: 1px solid #404040;
-  border-radius: 4px;
-  overflow: hidden;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	overflow: hidden;
 }
 
 .group-title {
-  background: #2d2d30;
-  padding: 6px 12px;
-  font-weight: 600;
-  font-size: 12px;
-  color: #007acc;
-  border-bottom: 1px solid #404040;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	background: var(--surface-overlay);
+	padding: 4px 8px 4px 12px;
+	font-weight: 600;
+	font-size: 12px;
+	color: var(--accent);
+	border-bottom: 1px solid var(--border);
 }
 
+/* Wide panels flow the entries into as many columns as fit. */
 .register-list {
-  display: flex;
-  flex-direction: column;
-  background: #1e1e1e;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	background: var(--surface-base);
 }
 
 .register-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 12px;
-  font-size: 12px;
-  border-bottom: 1px solid #404040;
-  font-family: 'Courier New', monospace;
+	display: grid;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	font-size: 12px;
+	/* Each entry draws the separators to its right and below it, so the ones an
+	   edge entry draws land outside the list and the group clips them away.
+	   Nothing is left hanging under the foot of a column or beside the last one,
+	   however many columns the entries wrap into. */
+	box-shadow: 1px 0 0 var(--border), 0 1px 0 var(--border);
+	font-family: 'Courier New', monospace;
 }
 
-.register-item:last-child {
-  border-bottom: none;
+/* A highlighted entry paints over the separators its neighbours drew above and
+   to the left of it, so it draws its own on every side. */
+.register-item.selected,
+.register-item-selectable:hover {
+	box-shadow: 0 0 0 1px var(--border);
 }
 
 .reg-name {
-  font-weight: 600;
-  color: #9cdcfe;
+	font-weight: 600;
+	color: var(--data-register);
 }
 
 .reg-value {
-  color: #ce9178;
-  font-weight: 500;
+	color: var(--data-string);
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-align: right;
+}
+
+.register-item-flag {
+	grid-template-columns: minmax(42px, auto) 1fr;
+}
+
+.format-toggles {
+	display: flex;
+}
+
+.format-toggle {
+	padding: 2px 6px;
+	background: var(--surface-input);
+	border: 1px solid var(--border-strong);
+	border-right-width: 0;
+	color: var(--text-primary);
+	cursor: pointer;
+	font-family: 'Courier New', monospace;
+	font-size: 11px;
+}
+
+.format-toggle:first-child {
+	border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.format-toggle:last-child {
+	border-right-width: 1px;
+	border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.format-toggle:hover {
+	background: var(--border-strong);
+}
+
+.format-toggle.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--text-bright);
+}
+
+/* Two selected neighbours share a blue edge, so draw the seam explicitly. */
+.format-toggle.active + .format-toggle.active {
+	border-left-color: var(--accent-active);
+}
+
+.register-tabs {
+	display: flex;
+	gap: 4px;
+}
+
+.register-tab {
+	flex: 1;
+	padding: 5px 8px;
+	background: var(--surface-overlay);
+	color: var(--text-primary);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.register-tab:hover {
+	background: var(--surface-overlay);
+}
+
+.register-tab.active {
+	background: var(--accent-surface);
+	color: var(--text-bright);
+	border-color: var(--accent);
+}
+
+.register-item-selectable {
+	cursor: pointer;
+}
+
+.register-item-selectable:hover {
+	background: var(--surface-overlay);
+}
+
+.register-item.selected {
+	background: var(--accent-surface);
+}
+
+/* The float-bits readout sits inside a register group, so it neither fills the
+   panel nor scrolls on its own the way a docked tool does. */
+.float-bits {
+	height: auto;
+	overflow: visible;
+	padding: 10px 12px;
+	background: var(--surface-base);
 }

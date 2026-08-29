@@ -1,0 +1,45 @@
+.call-stack-view {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.call-stack-frame {
+	display: block;
+	width: 100%;
+	background: transparent;
+	cursor: pointer;
+	text-align: left;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	color: var(--data-string);
+	font-family: 'Courier New', monospace;
+	font-size: 12px;
+	line-height: 1.6;
+	padding: 8px;
+}
+
+.call-stack-empty {
+	color: var(--text-muted);
+	font-size: 12px;
+	padding: 20px;
+	text-align: center;
+}
+
+.call-stack-frame:hover {
+	background: var(--surface-overlay);
+}
+
+.call-stack-frame-current {
+	border-color: var(--accent);
+}
+
+/* Selected frames share the green of the return address markers. */
+.call-stack-frame.selected {
+	border-color: var(--data-label);
+	background: rgba(78, 201, 176, 0.12);
+}
+
+.call-stack-name {
+	color: var(--data-function);
+}

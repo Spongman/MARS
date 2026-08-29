@@ -1,19 +1,141 @@
+/*
+ * Design tokens.
+ *
+ * The palette is VS Code's dark theme, which is what the workspace is modelled
+ * on.  Every colour in the app comes from here: a component that hardcodes a
+ * hex value drifts away from the rest the first time a shade is adjusted.
+ */
+:root {
+	/* Surfaces, darkest to lightest. */
+	--surface-base: #1e1e1e;
+	--surface-raised: #252526;
+	--surface-overlay: #2d2d30;
+	--surface-input: #3c3c3c;
+	--surface-input-hover: #4e4e54;
+
+	/* Borders, from hairlines to controls that need to read as raised. */
+	--border: #404040;
+	--border-strong: #555555;
+
+	/* Text, brightest to dimmest. */
+	--text-bright: #ffffff;
+	--text-primary: #d4d4d4;
+	--text-secondary: #999999;
+	--text-muted: #858585;
+	--text-disabled: #5a5a5a;
+
+	/* Accent, for selection, focus, and the primary action. */
+	--accent: #007acc;
+	--accent-hover: #0098ff;
+	--accent-active: #005a9e;
+	--accent-surface: #094771;
+
+	/* Status. */
+	--danger: #e51400;
+	--danger-surface: #5c2c2c;
+	--danger-border: #8b4444;
+	--danger-text: #ff6b6b;
+	--warning: #f4d03f;
+
+	/* Pipeline stages, one hue each so a row reads as a diagonal. */
+	--stage-if: #2f4f6f;
+	--stage-id: #3a5f7d;
+	--stage-ex: #007acc;
+	--stage-mem: #2f6f5a;
+	--stage-wb: #4a6f2f;
+
+	/* MIPS X-Ray: the datapath drawing, and the bit fields it annotates. */
+	--xray-panel: #232a2d;
+	--xray-block: #2c343d;
+	--xray-block-border: #56646f;
+	--xray-wire: #4d4d4d;
+	--xray-junction: #ffffff;
+	--xray-field-opcode: #ff8ad8;
+	--xray-field-rs: #7fdc8a;
+	--xray-field-rt: #9cdcfe;
+	--xray-field-rd: #67e8f9;
+	--xray-field-immediate: #ffab5e;
+
+	/* Syntax and data colouring, borrowed from the editor theme. */
+	--data-string: #ce9178;
+	--data-number: #b5cea8;
+	--data-label: #4ec9b0;
+	--data-register: #9cdcfe;
+	--data-function: #dcdcaa;
+
+	--font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+		'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+	--font-mono: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+
+	/* One radius for every small control; the 2/3/4px spread was accidental. */
+	--radius: 3px;
+
+	/* One height for every toolbar control, buttons and toggles alike. */
+	--control-height: 22px;
+}
+
 * {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+/* The shell is a fixed-viewport IDE: nothing scrolls the document.  Without
+ * this, dockview's tab overflow menu, which paints at the click point and only
+ * shifts itself into view a frame later, briefly grows the page to the right
+ * and flashes a horizontal scrollbar. */
+html,
+body {
+	overflow: hidden;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background: #1e1e1e;
-  color: #e0e0e0;
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	background: var(--surface-base);
+	color: var(--text-primary);
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+	font-family: var(--font-mono);
+}
+
+/* Scrollbars (VS Code dark style) */
+/* Firefox: no ::-webkit-scrollbar support, use the standard properties. */
+@supports not selector(::-webkit-scrollbar) {
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(121, 121, 121, 0.4) transparent;
+	}
+}
+
+::-webkit-scrollbar {
+	width: 14px;
+	height: 14px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(121, 121, 121, 0.4);
+	border: 3px solid transparent;
+	border-radius: 7px;
+	background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(100, 100, 100, 0.7);
+	background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:active {
+	background: rgba(191, 191, 191, 0.4);
+	background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+	background: transparent;
 }
