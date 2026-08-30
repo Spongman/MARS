@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { assemble } from '../../core/__tests__/helpers'
+import { Assembler } from '../../core/assembler'
+import { assemble, check } from '../../core/__tests__/helpers'
 import { MipsSimulator } from '../../core/simulator'
 import type { SourceIndex } from '../../core/sourceIndex'
 import { DebugSession } from '../session'
@@ -125,7 +126,7 @@ describe('debug session stepping', () => {
 		expect(session.step()).toBe(false)
 		expect(session.stepBack()).toBe(false)
 		expect(session.pause()).toBe(false)
-		expect(session.view()).toEqual({ breakpointLines: new Set(), breakpointAddresses: new Set(), breakpoints: new Set() })
+		expect(session.view()).toEqual({ breakpointLines: new Map(), breakpointAddresses: new Set(), breakpoints: new Set() })
 	})
 
 	it('paces a run over the same addresses stepping stops at', () => {
@@ -139,32 +140,32 @@ describe('debug session stepping', () => {
 
 describe('debug session breakpoints', () => {
 	it('moves a breakpoint asked for on a comment line onto the next line of code', () => {
-		const { session, simulator } = attach(SOURCE)
+		const { session, simulator, index } = attach(SOURCE)
 
-		session.toggleBreakpointLine(2)
+		session.toggleBreakpointLine(index.entryFile, 2)
 
-		expect([...session.view().breakpointLines]).toEqual([3])
+		expect(session.view().breakpointLines).toEqual(new Map([[index.entryFile, new Set([3])]]))
 		expect(simulator.getBreakpoints()).toEqual([0x00400000])
 
 		// The line it moved to is the one that takes it away again.
-		session.toggleBreakpointLine(3)
+		session.toggleBreakpointLine(index.entryFile, 3)
 		expect(session.view().breakpointLines.size).toBe(0)
 		expect(simulator.getBreakpoints()).toEqual([])
 	})
 
 	it('refuses a line past the last one that holds code', () => {
-		const { session, simulator } = attach(SOURCE)
+		const { session, simulator, index } = attach(SOURCE)
 
-		expect(session.toggleBreakpointLine(20)).toBe(false)
+		expect(session.toggleBreakpointLine(index.entryFile, 20)).toBe(false)
 
 		expect(session.view().breakpointLines.size).toBe(0)
 		expect(simulator.getBreakpoints()).toEqual([])
 	})
 
 	it('carries breakpoints across a rebuild, re-resolving the lines they sit on', () => {
-		const { session } = attach(SOURCE)
-		session.toggleBreakpointLine(4)
-		session.toggleBreakpointLine(5)
+		const { session, index } = attach(SOURCE)
+		session.toggleBreakpointLine(index.entryFile, 4)
+		session.toggleBreakpointLine(index.entryFile, 5)
 		expect(session.view().breakpoints).toEqual(new Set([0x00400008, 0x0040000c]))
 
 		const rebuilt = build(EDITED)
@@ -172,7 +173,7 @@ describe('debug session breakpoints', () => {
 
 		// Line 4 now holds the `li`, and line 5 is blank, so its breakpoint moves
 		// down to the `addi` that follows it.
-		expect(session.view().breakpointLines).toEqual(new Set([4, 6]))
+		expect(session.view().breakpointLines).toEqual(new Map([[rebuilt.index.entryFile, new Set([4, 6])]]))
 		expect(session.view().breakpoints).toEqual(new Set([0x00400004, 0x0040000c]))
 		expect(rebuilt.simulator.getBreakpoints().sort()).toEqual([0x00400004, 0x0040000c])
 	})
@@ -195,8 +196,8 @@ describe('debug session breakpoints', () => {
 	})
 
 	it('leaves the breakpoints alone while running to an address', async () => {
-		const { session, simulator } = attach(SOURCE)
-		session.toggleBreakpointLine(7)
+		const { session, simulator, index } = attach(SOURCE)
+		session.toggleBreakpointLine(index.entryFile, 7)
 
 		await session.runTo(0x0040000c)
 
@@ -206,11 +207,80 @@ describe('debug session breakpoints', () => {
 	})
 
 	it('takes the lines the editor reports as they moved', () => {
-		const { session, simulator } = attach(SOURCE)
+		const { session, simulator, index } = attach(SOURCE)
 
-		session.setBreakpointLines([4, 0, 1.5, 5])
+		session.setBreakpointLines(index.entryFile, [4, 0, 1.5, 5])
 
-		expect(session.view().breakpointLines).toEqual(new Set([4, 5]))
+		expect(session.view().breakpointLines).toEqual(new Map([[index.entryFile, new Set([4, 5])]]))
 		expect(simulator.getBreakpoints().sort()).toEqual([0x00400008, 0x0040000c])
+	})
+})
+
+/** A program that runs across two files, which is what `assembleAll` builds. */
+const MULTI_FILES = [
+	{ name: 'main.asm', code: 'main:\n\tjal helper\n\tli $v0, 10\n\tsyscall\n' },
+	{ name: 'lib.asm', code: 'helper:\n\taddi $t0, $t0, 1\n\tjr $ra\n\t.globl helper\n' },
+]
+
+function buildFiles(files = MULTI_FILES) {
+	const { program, machineCode } = check(new Assembler(files, files.map((file) => file.name)).assemble())
+	return { simulator: new MipsSimulator(machineCode, program), index: program.sourceIndex }
+}
+
+describe('debug session over several files', () => {
+	it('stops at a line of every assembled file, not only the entry file', () => {
+		const session = new DebugSession()
+		const { simulator, index } = buildFiles()
+		session.rebind(simulator, index)
+
+		// `jal helper` lands on the first line of the library, which is a line the
+		// editor can point at, so the step ends there rather than running through it.
+		session.step()
+
+		expect(simulator.instructionCount).toBe(1)
+		expect(simulator.pc).toBe(index.codeAddressForLine('lib.asm', 2))
+	})
+
+	it('paces a run over the addresses of every assembled file', () => {
+		const session = new DebugSession()
+		const { simulator, index } = buildFiles()
+		session.rebind(simulator, index)
+
+		const everyFile = new Set([...index.codeAddresses('main.asm'), ...index.codeAddresses('lib.asm')])
+		expect(simulator.pacedAddresses).toEqual(everyFile)
+	})
+
+	it('keeps the same line of two files as two breakpoints', () => {
+		const session = new DebugSession()
+		const { simulator, index } = buildFiles()
+		session.rebind(simulator, index)
+
+		session.toggleBreakpointLine('main.asm', 2)
+		session.toggleBreakpointLine('lib.asm', 2)
+
+		expect(session.view().breakpointLines).toEqual(new Map([['main.asm', new Set([2])], ['lib.asm', new Set([2])]]))
+		expect(session.view().breakpoints).toEqual(new Set([index.codeAddressForLine('main.asm', 2), index.codeAddressForLine('lib.asm', 2)]))
+
+		session.toggleBreakpointLine('lib.asm', 2)
+		expect(session.view().breakpointLines).toEqual(new Map([['main.asm', new Set([2])]]))
+		expect(simulator.getBreakpoints()).toEqual([index.codeAddressForLine('main.asm', 2)])
+	})
+
+	it('leaves the breakpoints of a file the next build left out alone', () => {
+		const session = new DebugSession()
+		const built = buildFiles()
+		session.rebind(built.simulator, built.index)
+		session.toggleBreakpointLine('lib.asm', 2)
+
+		// The single-file mode assembles the entry file alone; the library's
+		// breakpoint waits rather than being thrown away.
+		const alone = buildFiles([{ name: 'main.asm', code: 'main:\n\tli $v0, 10\n\tsyscall\n' }])
+		session.rebind(alone.simulator, alone.index)
+		expect(session.view().breakpointLines).toEqual(new Map([['lib.asm', new Set([2])]]))
+		expect(alone.simulator.getBreakpoints()).toEqual([])
+
+		const again = buildFiles()
+		session.rebind(again.simulator, again.index)
+		expect(again.simulator.getBreakpoints()).toEqual([again.index.codeAddressForLine('lib.asm', 2)])
 	})
 })
