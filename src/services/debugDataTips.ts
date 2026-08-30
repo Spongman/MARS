@@ -5,10 +5,11 @@ import { REGISTER_NAMES } from '../core/registers'
 import type { MemoryView, Registers } from '../core/types'
 
 interface DebugDataTipState {
-	code: string
 	registers: Registers
 	memory: MemoryView
 	fpRegisters: number[]
+	/** Labels of the assembled program, which reach across files. */
+	labels: Map<string, number>
 }
 
 interface MonacoLike {
@@ -22,6 +23,7 @@ interface MonacoLike {
 
 interface MonacoModel {
 	getLineContent: (lineNumber: number) => string
+	getValue: () => string
 }
 
 interface MonacoPosition {
@@ -87,7 +89,11 @@ export function registerMipsDebugDataTips(monaco: MonacoLike, getState: () => De
 			const state = getState()
 			const line = model.getLineContent(position.lineNumber)
 			const offset = position.column - 1
-			const labels = getLabels(state.code)
+			// The hovered file is assembled on its own, so a label it defines
+			// resolves as it is typed; the program's own labels cover the rest,
+			// which is where a label defined in another file comes from.
+			const own = getLabels(model.getValue())
+			const labels = { get: (name: string) => own.get(name) ?? state.labels.get(name) }
 
 			const memoryMatch = /(-?(?:0x[0-9a-f]+|\d+)|[A-Za-z_]\w*)?\s*\(\s*(\$(?:[A-Za-z]\w*|\d+))\s*\)/ig
 			for (const match of line.matchAll(memoryMatch)) {
