@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { Assembler } from '../assembler'
 import { disassemble } from '../disassembler'
+import { assemble } from './helpers'
 
 /**
  * THRAX ships `PseudoOps.txt`, the table its assembler reads to expand extended
@@ -58,7 +58,7 @@ describe('THRAX pseudo-op table', () => {
 	const supported = FORMS.filter((form) => !UNIMPLEMENTED.has(form.mnemonic))
 
 	it.each(supported.map((form) => [form.source, form] as const))('assembles %s', (_source, form) => {
-		const { machineCode } = new Assembler(assemblable(form.source)).assemble()
+		const { machineCode } = assemble(assemblable(form.source))
 		expect(machineCode.length).toBeGreaterThan(0)
 		// Every emitted word must decode: a silently mangled operand still
 		// decodes, but a word built from nothing generally does not.

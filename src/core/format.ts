@@ -29,3 +29,21 @@ export function formatHex(value: number, digits: number): string {
 export function memoryKey(address: number): string {
 	return formatWord(address)
 }
+
+/**
+ * The inverse of `formatWord`: parses a hex or decimal integer literal, or
+ * returns null when `text` is not one.
+ *
+ * Accepts optional leading/trailing whitespace, an optional leading `-`, then
+ * either `0x`/`0X` followed by hex digits or plain decimal digits.  Anything
+ * else - empty, a bare `0x`, a float, an exponent - returns null rather than
+ * guessing.  The result is signed; callers mask with `>>> 0` where a 32-bit
+ * unsigned value is wanted.
+ */
+export function parseWord(text: string): number | null {
+	const match = /^(-?)(?:0x([0-9a-f]+)|(\d+))$/i.exec(text.trim())
+	if (!match) return null
+	const sign = match[1] ? -1 : 1
+	const magnitude = match[2] !== undefined ? Number.parseInt(match[2], 16) : Number.parseInt(match[3], 10)
+	return sign * magnitude
+}

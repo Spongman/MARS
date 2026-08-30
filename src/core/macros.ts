@@ -4,6 +4,7 @@
  * invocations are replaced by their body with arguments substituted.
  */
 
+import { AssemblyError, at } from './diagnostics'
 import type { TokenData } from './types'
 
 interface MacroDefinition {
@@ -68,8 +69,8 @@ class MacroExpander {
 	private equivalences = new Map<string, TokenData[]>()
 	private expansions = 0
 
-	run(statements: TokenData[][], depth: number): TokenData[] {
-		if (depth > MAX_EXPANSION_DEPTH) throw new Error('Macro expansion nested too deeply')
+	run(statements: TokenData[][], depth: number, site?: TokenData): TokenData[] {
+		if (depth > MAX_EXPANSION_DEPTH) throw new AssemblyError('Macro expansion nested too deeply', site ? at(site) : {})
 		const output: TokenData[] = []
 
 		for (let index = 0; index < statements.length; index += 1) {
@@ -79,7 +80,7 @@ class MacroExpander {
 			if (head?.type === 'DIRECTIVE' && head.value === '.macro') {
 				index = this.defineMacro(statements, index)
 			} else if (head?.type === 'DIRECTIVE' && head.value === '.end_macro') {
-				throw new Error(`.end_macro without .macro at line ${head.line}:${head.column}`)
+				throw new AssemblyError('.end_macro without .macro', at(head))
 			} else if (head?.type === 'DIRECTIVE' && head.value === '.eqv') {
 				this.defineEquivalence(statement)
 			} else {
@@ -102,7 +103,7 @@ class MacroExpander {
 		if (!macro) return tokens
 
 		const labels = tokens.slice(0, start)
-		const body = this.run(splitStatements(this.expandBody(macro, args, head)), depth + 1)
+		const body = this.run(splitStatements(this.expandBody(macro, args, head)), depth + 1, head)
 		return labels.length > 0 ? [...labels, { ...head, type: 'NEWLINE', value: '\n' }, ...body] : body
 	}
 
@@ -131,13 +132,13 @@ class MacroExpander {
 	private defineMacro(statements: TokenData[][], index: number): number {
 		const header = statements[index]
 		const nameToken = header[1]
-		if (nameToken?.type !== 'IDENTIFIER') throw new Error(`.macro requires a name at line ${header[0].line}:${header[0].column}`)
+		if (nameToken?.type !== 'IDENTIFIER') throw new AssemblyError('.macro requires a name', at(header[0]))
 
 		const params: string[] = []
 		for (const token of header.slice(2)) {
 			if (ARGUMENT_SEPARATORS.includes(token.type)) continue
 			if (token.type !== 'IDENTIFIER' || !token.value.startsWith('%')) {
-				throw new Error(`Macro parameters must begin with % at line ${token.line}:${token.column}`)
+				throw new AssemblyError('Macro parameters must begin with %', at(token))
 			}
 			params.push(token.value)
 		}
@@ -147,10 +148,10 @@ class MacroExpander {
 		for (; cursor < statements.length; cursor += 1) {
 			const head = statements[cursor][0]
 			if (head?.type === 'DIRECTIVE' && head.value === '.end_macro') break
-			if (head?.type === 'DIRECTIVE' && head.value === '.macro') throw new Error(`Nested .macro at line ${head.line}:${head.column}`)
+			if (head?.type === 'DIRECTIVE' && head.value === '.macro') throw new AssemblyError('Nested .macro', at(head))
 			body.push(...statements[cursor])
 		}
-		if (cursor >= statements.length) throw new Error(`Unterminated .macro "${nameToken.value}"`)
+		if (cursor >= statements.length) throw new AssemblyError(`Unterminated .macro "${nameToken.value}"`, at(nameToken))
 
 		// A later definition with the same name and parameter count is ignored.
 		const key = macroKey(nameToken.value, params.length)
@@ -161,9 +162,9 @@ class MacroExpander {
 
 	private defineEquivalence(statement: TokenData[]) {
 		const nameToken = statement[1]
-		if (nameToken?.type !== 'IDENTIFIER') throw new Error(`.eqv requires a name at line ${statement[0].line}:${statement[0].column}`)
+		if (nameToken?.type !== 'IDENTIFIER') throw new AssemblyError('.eqv requires a name', at(statement[0]))
 		const value = statement.slice(2).filter((token) => token.type !== 'NEWLINE')
-		if (value.length === 0) throw new Error(`.eqv requires a replacement at line ${nameToken.line}:${nameToken.column}`)
+		if (value.length === 0) throw new AssemblyError('.eqv requires a replacement', at(nameToken))
 		this.equivalences.set(nameToken.value, this.substituteEquivalences(value))
 	}
 

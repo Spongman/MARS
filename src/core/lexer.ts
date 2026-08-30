@@ -2,6 +2,7 @@
  * MIPS Lexer - Tokenizes MIPS assembly code
  */
 
+import { AssemblyError } from './diagnostics'
 import type { TokenData, TokenType } from './types'
 
 export class Token implements TokenData {
@@ -51,6 +52,11 @@ export class Lexer {
 
 		this.tokens.push(new Token('EOF', '', this.line, this.column, this.file))
 		return this.tokens
+	}
+
+	/** A lexical error, positioned in the file being read. */
+	error(message: string, line: number, column: number): AssemblyError {
+		return new AssemblyError(message, { file: this.file || undefined, line, column, endColumn: column + 1 })
 	}
 
 	nextToken(): Token | null {
@@ -106,7 +112,7 @@ export class Lexer {
 			case '\n':
 				return new Token('NEWLINE', '\n', line, col)
 			default:
-				throw new Error(`Unexpected character: ${char} at line ${line}:${col}`)
+				throw this.error(`Unexpected character: ${char}`, line, col)
 		}
 	}
 
@@ -220,7 +226,7 @@ export class Lexer {
 		}
 
 		if (this.peek() !== '"') {
-			throw new Error(`Unterminated string at line ${line}:${col}`)
+			throw this.error('Unterminated string', line, col)
 		}
 		this.advance() // Skip closing quote
 
@@ -234,12 +240,12 @@ export class Lexer {
 		this.advance() // Skip opening quote
 
 		if (this.pos >= this.source.length || this.peek() === "'") {
-			throw new Error(`Empty character literal at line ${line}:${col}`)
+			throw this.error('Empty character literal', line, col)
 		}
 		const value = this.peek() === '\\' ? this.readOctalEscape() ?? this.readEscape() : this.readSourceCharacter()
 
 		if (this.peek() !== "'") {
-			throw new Error(`Unterminated character literal at line ${line}:${col}`)
+			throw this.error('Unterminated character literal', line, col)
 		}
 		this.advance() // Skip closing quote
 

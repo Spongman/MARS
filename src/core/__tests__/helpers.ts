@@ -1,8 +1,19 @@
-import { Assembler } from '../assembler'
+import { Assembler, type AssembleResult } from '../assembler'
+import { firstError } from '../diagnostics'
 import { MipsSimulator } from '../simulator'
 
-export function assemble(source: string) {
-	return new Assembler(source).assemble()
+/**
+ * Assembly reports its faults rather than throwing, so the tests turn the first
+ * error back into an exception and keep their `toThrow` expectations.
+ */
+export function check(result: AssembleResult): AssembleResult {
+	const error = firstError(result.diagnostics)
+	if (error) throw new Error(error.message)
+	return result
+}
+
+export function assemble(source: string): AssembleResult {
+	return check(new Assembler(source).assemble())
 }
 
 /** Assembles `source` and returns its machine words as unsigned numbers. */
@@ -34,7 +45,7 @@ export function withExit(body: string): string {
 
 /** Builds `source` with THRAX's delayed branching setting turned on. */
 export function buildDelayed(source: string): MipsSimulator {
-	const { program, machineCode } = new Assembler(source, undefined, { delayedBranching: true }).assemble()
+	const { program, machineCode } = check(new Assembler(source, undefined, { delayedBranching: true }).assemble())
 	const simulator = new MipsSimulator(machineCode, program)
 	simulator.delayedBranching = true
 	return simulator

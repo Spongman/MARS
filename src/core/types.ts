@@ -1,3 +1,5 @@
+import type { SourceIndex } from './sourceIndex'
+
 export type TokenType =
 	| 'COMMA'
 	| 'COLON'
@@ -22,6 +24,16 @@ export interface TokenData {
 	column: number
 	/** Source file the token came from, for multi-file assembly. */
 	file?: string
+}
+
+/** One problem found while assembling, positioned where the editor can mark it. */
+export interface Diagnostic {
+	severity: 'error' | 'warning'
+	message: string
+	file?: string
+	line?: number
+	column?: number
+	endColumn?: number
 }
 
 export interface RegisterArgument { type: 'register'; value: string }
@@ -53,6 +65,8 @@ export interface MipsInstruction {
 	labels: string[]
 	address: number | null
 	sourceLine: number
+	/** Column of the mnemonic, so an error here can be marked in the editor. */
+	sourceColumn?: number
 	sourceFile?: string
 	segment?: TextSegment
 }
@@ -64,12 +78,8 @@ export interface MipsProgram {
 	instructions: MipsInstruction[]
 	labels: Map<string, number>
 	data: DataEntry[]
-	/** Line-to-address map of the entry file, kept for single-file callers. */
-	sourceMap: Map<number, number>
-	/** Line-to-address map per source file name. */
-	sourceMaps?: Map<string, Map<number, number>>
-	segmentEndLabels?: SegmentEndLabels[]
-	segmentStarts?: Record<TextSegment, number>
+	/** Which line of which file every machine word came from. */
+	sourceIndex: SourceIndex
 }
 
 /** One gutter row: the bytes at `address`, and the instruction word when it is code. */

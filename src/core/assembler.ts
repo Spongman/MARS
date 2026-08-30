@@ -3,11 +3,13 @@
  */
 
 import { doubleToBits, fpRegisterNumber, cp0RegisterNumber, singleToBits } from './coprocessor'
+import { AssemblyError, at, atInstruction, type SourcePosition } from './diagnostics'
 import { Lexer } from './lexer'
 import { expandMacros } from './macros'
-import { Parser } from './parser'
+import { Parser, type ParseResult } from './parser'
 import { REGISTER_NAMES, registerNumber } from './registers'
-import type { ImmediateArgument, LabelArgument, MipsArgument, MipsInstruction, MipsProgram, TextSegment, TokenData } from './types'
+import { buildSourceIndex, EMPTY_SOURCE_INDEX } from './sourceIndex'
+import type { Diagnostic, ImmediateArgument, LabelArgument, MipsArgument, MipsInstruction, MipsProgram, TextSegment, TokenData } from './types'
 
 /** Instructions whose two-operand form repeats the destination as a source. */
 const TWO_OPERAND_FORMS = new Set([
@@ -44,6 +46,23 @@ const FP_MEMORY_OPCODES: Record<string, number> = { LWC1: 0x31, LDC1: 0x35, SWC1
 /** One translation unit; several are assembled together into one program. */
 export interface SourceFile { name: string; code: string }
 
+/** What one assembly produced; `program` and `machineCode` stand only when no diagnostic is an error. */
+export interface AssembleResult {
+	program: MipsProgram
+	machineCode: number[]
+	diagnostics: Diagnostic[]
+}
+
+/** The program of a source that never got as far as being parsed. */
+function emptyProgram(): MipsProgram {
+	return {
+		instructions: [],
+		labels: new Map(),
+		data: [],
+		sourceIndex: EMPTY_SOURCE_INDEX,
+	}
+}
+
 export interface AssemblerOptions {
 	/**
 	 * THRAX's delayed branching setting, off by default (Settings.java:130).  It
@@ -72,6 +91,10 @@ export class Assembler {
 	machineCode: number[]
 	currentAddress: number
 	delayedBranching: boolean
+	/** Faults found in the source, rather than bugs in the assembler. */
+	diagnostics: Diagnostic[]
+	/** Instruction being expanded or encoded, which positions its diagnostics. */
+	currentInstruction: MipsInstruction | null
 
 	/**
 	 * A bare string assembles as a single unnamed file.  Given several files,
@@ -84,28 +107,84 @@ export class Assembler {
 		this.machineCode = []
 		this.currentAddress = 0x00400000
 		this.delayedBranching = options.delayedBranching ?? false
+		this.diagnostics = []
+		this.currentInstruction = null
 	}
 
 	get entryFile(): string {
 		return this.entries[0]?.name ?? ''
 	}
 
-	assemble() {
-		// Lexical analysis, across every file of the program
-		const tokens = expandMacros(this.tokenizeFiles())
+	/**
+	 * A fault in the source is reported, not thrown: the per-instruction passes
+	 * carry on past one, so a single assembly names every bad instruction it
+	 * finds.  Lexing, macro expansion and parsing still stop at their first
+	 * error, since nothing downstream of a broken token stream is trustworthy.
+	 */
+	assemble(): AssembleResult {
+		// Every pass accumulates into a field, so a second call starts clean rather
+		// than appending its output to the first one's.
+		this.diagnostics = []
+		this.machineCode = []
+		this.program = null
+		this.currentInstruction = null
 
-		// Parse
-		const parser = new Parser(tokens)
-		this.program = parser.parse()
-		this.expandPseudoInstructions()
+		let parsed: ParseResult
+		try {
+			// Lexical analysis, across every file of the program
+			const tokens = expandMacros(this.tokenizeFiles())
+
+			// Parse
+			parsed = new Parser(tokens).parse()
+		} catch (error) {
+			this.record(error)
+			return { program: emptyProgram(), machineCode: [], diagnostics: this.diagnostics }
+		}
+
+		this.program = this.expandPseudoInstructions(parsed)
 
 		// Generate machine code
 		this.generateMachineCode()
 
+		this.sortDiagnostics()
 		return {
 			program: this.program,
 			machineCode: this.machineCode,
+			diagnostics: this.diagnostics,
 		}
+	}
+
+	/**
+	 * Records a source fault.  Anything else is a bug in the assembler and keeps
+	 * propagating, rather than being reported as the user's mistake.
+	 */
+	record(error: unknown) {
+		if (!(error instanceof AssemblyError)) throw error
+		const diagnostic = error.diagnostic
+		// One fault can surface twice, such as in both halves of an expanded `la`.
+		const seen = this.diagnostics.some((existing) =>
+			existing.message === diagnostic.message && existing.file === diagnostic.file && existing.line === diagnostic.line)
+		if (!seen) this.diagnostics.push(diagnostic)
+	}
+
+	/**
+	 * Puts the diagnostics in reading order: the passes find them out of order,
+	 * since a pseudo-instruction is expanded before anything is encoded.
+	 */
+	sortDiagnostics() {
+		const fileOrder = new Map<string, number>()
+		for (const diagnostic of this.diagnostics) {
+			if (!fileOrder.has(diagnostic.file ?? '')) fileOrder.set(diagnostic.file ?? '', fileOrder.size)
+		}
+		this.diagnostics.sort((left, right) =>
+			(fileOrder.get(left.file ?? '')! - fileOrder.get(right.file ?? '')!) ||
+			((left.line ?? Infinity) - (right.line ?? Infinity)) ||
+			((left.column ?? 0) - (right.column ?? 0)))
+	}
+
+	/** Position of the instruction being worked on, for the encoding helpers. */
+	instructionPosition(): SourcePosition {
+		return atInstruction(this.currentInstruction)
 	}
 
 	/** Lexes every file, splicing in each `.include`, into one token stream. */
@@ -138,7 +217,7 @@ export class Assembler {
 
 			const target = tokens[index + 1]
 			if (!target || target.type !== 'STRING') {
-				throw new Error(`.include expects a file name at ${file.name}:${token.line}:${token.column}`)
+				throw new AssemblyError('.include expects a file name', at(token))
 			}
 			index += 1
 			output.push(...this.includeFile(target.value, included, token))
@@ -155,7 +234,7 @@ export class Assembler {
 			this.files.find((candidate) => candidate.name.toLowerCase().replace(/^.*[\\/]/, '') === wanted)
 		if (!file) {
 			const available = this.files.map((candidate) => candidate.name).join(', ')
-			throw new Error(`Cannot include "${name}" at ${token.file}:${token.line}:${token.column}; open files are: ${available}`)
+			throw new AssemblyError(`Cannot include "${name}"; open files are: ${available}`, at(token))
 		}
 
 		// A file already assembled, or already included, is not repeated.
@@ -166,77 +245,92 @@ export class Assembler {
 
 	generateMachineCode() {
 		for (const instr of this.program!.instructions) {
-			const code = this.encodeInstruction(instr)
-			this.machineCode.push(code)
+			try {
+				this.machineCode.push(this.encodeInstruction(instr))
+			} catch (error) {
+				this.record(error)
+				// One word per instruction either way, so the two stay in step.
+				this.machineCode.push(0)
+			}
 		}
 	}
 
 	/**
 	 * Turn source-level conveniences into the instructions a MIPS processor
-	 * actually executes.  This happens before addresses are assigned: a branch
-	 * following (for example) `blt` must see the two words emitted for it.
+	 * actually executes, and lay them out.  Expansion comes first: a branch
+	 * following (for example) `blt` must see the two words emitted for it.  This
+	 * is the only pass that assigns a text address, so its source index is the
+	 * one every consumer reads.
 	 */
-	expandPseudoInstructions() {
-		const program = this.program!
+	expandPseudoInstructions(parsed: ParseResult): MipsProgram {
 		const expanded: MipsInstruction[] = []
 		// The parser leaves only data labels resolved; text labels ride on the
 		// instructions they precede, so expansion keeps them in step.
-		const labels = new Map(program.labels)
+		const labels = new Map(parsed.labels)
 
-		for (const instruction of program.instructions) {
-			const sequence = this.expandInstruction(instruction)
-			sequence.forEach((item, index) => {
-				item.labels = index === 0 ? [...instruction.labels] : []
-				item.segment = instruction.segment ?? 'text'
-				item.sourceFile = instruction.sourceFile ?? ''
-				expanded.push(item)
-			})
+		for (const instruction of parsed.instructions) {
+			try {
+				const sequence = this.expandInstruction(instruction)
+				sequence.forEach((item, index) => {
+					item.labels = index === 0 ? [...instruction.labels] : []
+					item.segment = instruction.segment ?? 'text'
+					item.sourceFile = instruction.sourceFile ?? ''
+					item.sourceColumn = instruction.sourceColumn
+					expanded.push(item)
+				})
+			} catch (error) {
+				// The instruction emits nothing; the ones after it still assemble.
+				this.record(error)
+			}
 		}
 
-		const nextAddress: Record<TextSegment, number> = { ...(program.segmentStarts ?? { text: 0x00400000, ktext: 0x80000000 }) }
-		const sourceMaps = new Map<string, Map<number, number>>()
+		const nextAddress: Record<TextSegment, number> = { ...parsed.segmentStarts }
 		for (const instruction of expanded) {
 			const segment = instruction.segment ?? 'text'
 			const address = nextAddress[segment]
 			instruction.address = address
 			for (const label of instruction.labels) labels.set(label, address)
-
-			const file = instruction.sourceFile ?? ''
-			const sourceMap = sourceMaps.get(file) ?? new Map<number, number>()
-			if (!sourceMap.has(instruction.sourceLine)) sourceMap.set(instruction.sourceLine, address)
-			sourceMaps.set(file, sourceMap)
-
 			nextAddress[segment] = address + 4
 		}
 
 		// A label after the final instruction of a text segment names the end of
 		// that segment, which only the finished layout knows.
-		for (const { segment, labels: endLabels } of program.segmentEndLabels ?? []) {
+		for (const { segment, labels: endLabels } of parsed.segmentEndLabels) {
 			for (const label of endLabels) labels.set(label, nextAddress[segment])
 		}
+
+		const program: MipsProgram = {
+			instructions: expanded,
+			labels,
+			data: parsed.data,
+			sourceIndex: buildSourceIndex(this.entryFile, expanded, parsed.data),
+		}
+		this.program = program
 
 		// `la` uses LUI/ORI, so materialize the two halves only after the final
 		// label layout is known.  Keeping branches as labels lets their normal
 		// PC-relative resolver calculate offsets from each expanded instruction.
 		for (const instruction of expanded) {
-			if (instruction.name === 'LUI' && instruction.args[1]?.type === 'label') {
-				instruction.args[1] = { type: 'immediate', value: this.labelAddress(labels, instruction.args[1]) >>> 16 }
-			}
-			if (instruction.name === 'ORI' && instruction.args[2]?.type === 'label') {
-				instruction.args[2] = { type: 'immediate', value: this.labelAddress(labels, instruction.args[2]) & 0xffff }
+			this.currentInstruction = instruction
+			try {
+				if (instruction.name === 'LUI' && instruction.args[1]?.type === 'label') {
+					instruction.args[1] = { type: 'immediate', value: this.labelAddress(labels, instruction.args[1]) >>> 16 }
+				}
+				if (instruction.name === 'ORI' && instruction.args[2]?.type === 'label') {
+					instruction.args[2] = { type: 'immediate', value: this.labelAddress(labels, instruction.args[2]) & 0xffff }
+				}
+			} catch (error) {
+				this.record(error)
 			}
 		}
 
-		program.instructions = expanded
-		program.labels = labels
-		program.sourceMaps = sourceMaps
-		program.sourceMap = sourceMaps.get(this.entryFile) ?? new Map<number, number>()
+		return program
 	}
 
 	/** Address of a label reference, including the constant of `label+4`. */
 	labelAddress(labels: Map<string, number>, arg: LabelArgument): number {
 		const address = labels.get(arg.value)
-		if (address === undefined) throw new Error(`Undefined label: ${arg.value}`)
+		if (address === undefined) throw new AssemblyError(`Undefined label: ${arg.value}`, this.instructionPosition())
 		return address + (arg.offset ?? 0)
 	}
 
@@ -247,6 +341,7 @@ export class Assembler {
 			labels: [],
 			address: null,
 			sourceLine: instruction.sourceLine,
+			sourceColumn: instruction.sourceColumn,
 		})
 		const reg = (value: string): MipsArgument => ({ type: 'register', value })
 		const immediate = (value: number): MipsArgument => ({ type: 'immediate', value })
@@ -323,7 +418,7 @@ export class Assembler {
 		}
 		/** The register one past `arg`, which the doubleword forms pair with. */
 		const nextRegister = (arg: MipsArgument): MipsArgument => {
-			if (typeof arg !== 'object' || arg.type !== 'register') throw new Error('Expected a register')
+			if (typeof arg !== 'object' || arg.type !== 'register') throw new AssemblyError('Expected a register', atInstruction(instruction))
 			const number = registerNumber(arg.value)
 			if (number === null) return { type: 'register', value: `$f${fpRegisterNumber(arg.value) + 1}` }
 			return reg(REGISTER_NAMES[(number + 1) % 32])
@@ -344,7 +439,7 @@ export class Assembler {
 				return [make('LUI', [reg('$at'), second]), make('ORI', [reg('$at'), reg('$at'), second]), ...pair(0, '$at')]
 			}
 			if (isImmediate(second)) return [...loadAt(second.value >>> 0), ...pair(0, '$at')]
-			throw new Error(`${instruction.name} needs an address operand`)
+			throw new AssemblyError(`${instruction.name} needs an address operand`, atInstruction(instruction))
 		}
 		/**
 		 * A load/store target as an offset(base) operand, `delta` bytes on.  The
@@ -366,7 +461,7 @@ export class Assembler {
 				return { setup: [], operand: memory(target.offset.value + delta, target.register) }
 			}
 			if (typeof target === 'object' && (target.type === 'immediate' || target.type === 'label')) return address(target)
-			throw new Error(`${instruction.name} needs an address operand`)
+			throw new AssemblyError(`${instruction.name} needs an address operand`, atInstruction(instruction))
 		}
 		/** `ulw`/`usw`: the halves of a word that straddles an alignment boundary. */
 		const unalignedWord = (high: string, low: string): MipsInstruction[] => {
@@ -440,7 +535,7 @@ export class Assembler {
 			case 'NOP': return [make('SLL', [reg('$zero'), reg('$zero'), immediate(0)])]
 			case 'MOVE': return [make('ADDU', [first, second, reg('$zero')])]
 			case 'LI': {
-				if (second?.type !== 'immediate') throw new Error('li requires an immediate value')
+				if (second?.type !== 'immediate') throw new AssemblyError('li requires an immediate value', atInstruction(instruction))
 				if (second.value >= -0x8000 && second.value <= 0x7fff) return [make('ADDIU', [first, reg('$zero'), second])]
 				return [
 					make('LUI', [first, immediate(second.value >>> 16)]),
@@ -534,14 +629,14 @@ export class Assembler {
 			case 'MULO': return multiplyChecked('MULT', [make('MFLO', [first]), make('SRA', [first, first, immediate(31)])])
 			case 'MULOU': return multiplyChecked('MULTU', [])
 			case 'LI.S': {
-				if (second?.type !== 'immediate') throw new Error('li.s requires an immediate value')
+				if (second?.type !== 'immediate') throw new AssemblyError('li.s requires an immediate value', atInstruction(instruction))
 				return [...loadAt(singleToBits(second.value)), make('MTC1', [reg('$at'), first])]
 			}
 			case 'LI.D': {
-				if (second?.type !== 'immediate') throw new Error('li.d requires an immediate value')
-				if (first?.type !== 'register') throw new Error('li.d requires a floating-point register')
+				if (second?.type !== 'immediate') throw new AssemblyError('li.d requires an immediate value', atInstruction(instruction))
+				if (first?.type !== 'register') throw new AssemblyError('li.d requires a floating-point register', atInstruction(instruction))
 				const index = fpRegisterNumber(first.value)
-				if (index % 2 !== 0) throw new Error(`li.d requires an even register, not ${first.value}`)
+				if (index % 2 !== 0) throw new AssemblyError(`li.d requires an even register, not ${first.value}`, atInstruction(instruction))
 				const { low, high } = doubleToBits(second.value)
 				return [
 					...loadAt(low), make('MTC1', [reg('$at'), first]),
@@ -602,6 +697,7 @@ export class Assembler {
 	encodeInstruction(instr: MipsInstruction): number {
 		const name = instr.name
 		this.currentAddress = instr.address
+		this.currentInstruction = instr
 
 		// Resolve labels in arguments
 		const args = instr.args.map((arg) => this.resolveArgument(arg))
@@ -703,7 +799,7 @@ export class Assembler {
 			case 'BREAK':
 				return (((this.getImmediateValue(args[0]) & 0xfffff) << 6) | 0x0d) >>> 0
 			default:
-				throw new Error(`Unknown instruction: ${name}`)
+				throw new AssemblyError(`Unknown instruction: ${name}`, this.instructionPosition())
 		}
 	}
 
@@ -788,12 +884,12 @@ export class Assembler {
 
 	getFpRegisterNumber(arg: MipsArgument | undefined): number {
 		if (typeof arg === 'object' && arg.type === 'register') return fpRegisterNumber(arg.value)
-		throw new Error('Expected a floating-point register')
+		throw new AssemblyError('Expected a floating-point register', this.instructionPosition())
 	}
 
 	getCp0RegisterNumber(arg: MipsArgument | undefined): number {
 		if (typeof arg === 'object' && arg.type === 'register') return cp0RegisterNumber(arg.value)
-		throw new Error('Expected a coprocessor 0 register')
+		throw new AssemblyError('Expected a coprocessor 0 register', this.instructionPosition())
 	}
 
 	encodeRType(name: string, args: MipsArgument[], { opcode, func }: { opcode: number; func: number }): number {
@@ -896,10 +992,10 @@ export class Assembler {
 			: typeof arg === 'object' && arg.type === 'register' ? arg.value : null
 		// Falling back to register 0 here silently drops the operand, which turns
 		// `add $t0, $t1, 5` into `add $t0, $t1, $zero` and assembles a wrong answer.
-		if (name === null) throw new Error(`Expected a register, found ${describeArgument(arg)}`)
+		if (name === null) throw new AssemblyError(`Expected a register, found ${describeArgument(arg)}`, this.instructionPosition())
 
 		const number = registerNumber(name)
-		if (number === null) throw new Error(`Unknown register: ${name}`)
+		if (number === null) throw new AssemblyError(`Unknown register: ${name}`, this.instructionPosition())
 		return number
 	}
 
@@ -936,7 +1032,7 @@ export class Assembler {
 		}
 		if (arg.type === 'memory') {
 			const offset = this.resolveArgument(arg.offset)
-			if (offset.type !== 'immediate' && offset.type !== 'label') throw new Error('Invalid memory offset')
+			if (offset.type !== 'immediate' && offset.type !== 'label') throw new AssemblyError('Invalid memory offset', this.instructionPosition())
 			return { ...arg, offset }
 		}
 		return arg

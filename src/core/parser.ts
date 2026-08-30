@@ -3,6 +3,7 @@
  */
 
 import { doubleToBits, singleToBits } from './coprocessor'
+import { AssemblyError, at } from './diagnostics'
 import type {
 	DataEntry,
 	DataValue,
@@ -23,6 +24,9 @@ const SEGMENT_STARTS: Record<Segment, number> = {
 	ktext: 0x80000000,
 	kdata: 0x90000000,
 }
+
+/** Data segments lay out here; the assembler places the text segments. */
+type DataSegment = 'data' | 'kdata'
 
 const DATA_DIRECTIVES = ['.word', '.half', '.byte', '.float', '.double', '.ascii', '.asciiz', '.space']
 
@@ -50,7 +54,23 @@ export class Instruction {
 		public sourceLine = 0,
 		public sourceFile = '',
 		public segment: TextSegment = 'text',
+		public sourceColumn = 0,
 	) {}
+}
+
+/**
+ * What one parse produced.  Instructions arrive without addresses: they only
+ * get them once the assembler has expanded the pseudo-instructions between
+ * them, so text layout is the assembler's alone.
+ */
+export interface ParseResult {
+	instructions: Instruction[]
+	labels: Map<string, number>
+	data: DataEntry[]
+	/** Text labels with no instruction after them; the assembler places them. */
+	segmentEndLabels: SegmentEndLabels[]
+	/** Base address of each text segment, which `.text 0x...` may override. */
+	segmentStarts: Record<TextSegment, number>
 }
 
 export class Parser {
@@ -58,14 +78,12 @@ export class Parser {
 	instructions: Instruction[]
 	labels: Map<string, number>
 	data: DataEntry[]
-	sourceMaps: Map<string, Map<number, number>>
 	segment: Segment
-	addresses: Record<Segment, number>
+	/** Where the next data directive lands; data labels bind to final addresses. */
+	addresses: Record<DataSegment, number>
 	/** Labels awaiting the next emission in their own segment. */
 	pendingLabels: Record<Segment, string[]>
-	/** Base address of each text segment, which `.text 0x...` may override. */
 	segmentStarts: Record<TextSegment, number>
-	/** Text labels with no instruction after them; the assembler places them. */
 	segmentEndLabels: SegmentEndLabels[]
 	definedLabels: Set<string>
 
@@ -75,16 +93,15 @@ export class Parser {
 		this.instructions = []
 		this.labels = new Map()
 		this.data = []
-		this.sourceMaps = new Map()
 		this.segment = 'text'
-		this.addresses = { ...SEGMENT_STARTS }
+		this.addresses = { data: SEGMENT_STARTS.data, kdata: SEGMENT_STARTS.kdata }
 		this.pendingLabels = { text: [], data: [], ktext: [], kdata: [] }
 		this.segmentStarts = { text: SEGMENT_STARTS.text, ktext: SEGMENT_STARTS.ktext }
 		this.segmentEndLabels = []
 		this.definedLabels = new Set()
 	}
 
-	parse() {
+	parse(): ParseResult {
 		while (!this.isAtEnd()) {
 			this.skipNewlines()
 			if (this.isAtEnd()) break
@@ -109,18 +126,15 @@ export class Parser {
 				continue
 			}
 
-			throw new Error(`Unexpected token "${token.value}" ${this.at(token)}`)
+			throw new AssemblyError(`Unexpected token "${token.value}"`, at(token))
 		}
 
 		this.flushPendingLabels()
 
-		const entryFile = this.tokens[0]?.file ?? ''
 		return {
 			instructions: this.instructions,
 			labels: this.labels,
 			data: this.data,
-			sourceMap: this.sourceMaps.get(entryFile) ?? new Map<number, number>(),
-			sourceMaps: this.sourceMaps,
 			segmentEndLabels: this.segmentEndLabels,
 			segmentStarts: this.segmentStarts,
 		}
@@ -130,15 +144,11 @@ export class Parser {
 		const instructionToken = this.consume('INSTRUCTION')
 		const segment = this.segment
 		if (!isTextSegment(segment)) {
-			throw new Error(`Instruction in .${segment} segment ${this.at(instructionToken)}`)
+			throw new AssemblyError(`Instruction in .${segment} segment`, at(instructionToken))
 		}
 		const args = this.parseArguments()
 		const file = instructionToken.file ?? ''
-		const instr = new Instruction(instructionToken.value.toUpperCase(), args, this.takePendingLabels(segment), instructionToken.line, file, segment)
-		instr.address = this.addresses[segment]
-		this.sourceMapFor(file).set(instructionToken.line, instr.address)
-		this.instructions.push(instr)
-		this.addresses[segment] += 4
+		this.instructions.push(new Instruction(instructionToken.value.toUpperCase(), args, this.takePendingLabels(segment), instructionToken.line, file, segment, instructionToken.column))
 		this.skipNewlines()
 	}
 
@@ -150,26 +160,27 @@ export class Parser {
 		if (name === '.text' || name === '.data' || name === '.ktext' || name === '.kdata') {
 			this.segment = name.slice(1) as Segment
 			// THRAX allows an explicit base address, as in `.ktext 0x80000180`.
-			if (args.length > 0) this.setSegmentAddress(this.segment, this.requireImmediate(args[0], name), directiveToken)
+			if (args.length > 0) this.setSegmentAddress(this.segment, this.requireImmediate(args[0], name, directiveToken), directiveToken)
 		} else if (['.globl', '.global', '.set'].includes(name)) {
 			// Linkage and assembler options do not emit anything here.
 		} else if (name === '.extern') {
 			this.addExtern(name, args, directiveToken)
 		} else if (name === '.align') {
 			if (this.segment !== 'data' && this.segment !== 'kdata') {
-				throw new Error(`${name} is only supported in .data ${this.at(directiveToken)}`)
+				throw new AssemblyError(`${name} is only supported in .data`, at(directiveToken))
 			}
-			const exponent = this.requireImmediate(args[0], name)
-			if (exponent < 0 || exponent > 30) throw new Error(`Invalid alignment for ${name}`)
+			const exponent = this.requireImmediate(args[0], name, directiveToken)
+			if (exponent < 0 || exponent > 30) throw new AssemblyError(`Invalid alignment for ${name}`, at(directiveToken))
 			const alignment = 2 ** exponent
-			this.addresses[this.segment] = Math.ceil(this.addresses[this.segment] / alignment) * alignment
+			const segment = this.segment as DataSegment
+			this.addresses[segment] = Math.ceil(this.addresses[segment] / alignment) * alignment
 		} else if (DATA_DIRECTIVES.includes(name)) {
 			if (this.segment !== 'data' && this.segment !== 'kdata') {
-				throw new Error(`${name} is only supported in .data ${this.at(directiveToken)}`)
+				throw new AssemblyError(`${name} is only supported in .data`, at(directiveToken))
 			}
 			this.addDataDirective(name, args, directiveToken)
 		} else {
-			throw new Error(`Unsupported directive: ${name} ${this.at(directiveToken)}`)
+			throw new AssemblyError(`Unsupported directive: ${name}`, at(directiveToken))
 		}
 		this.skipNewlines()
 	}
@@ -179,9 +190,10 @@ export class Parser {
 		// based once: later instructions follow the ones already emitted.
 		if (isTextSegment(segment)) {
 			if (this.instructions.some((instruction) => instruction.segment === segment)) {
-				throw new Error(`.${segment} cannot be restarted at a new address ${this.at(token)}`)
+				throw new AssemblyError(`.${segment} cannot be restarted at a new address`, at(token))
 			}
 			this.segmentStarts[segment] = address
+			return
 		}
 		this.addresses[segment] = address
 	}
@@ -189,9 +201,9 @@ export class Parser {
 	/** `.extern name, size` reserves `size` zeroed bytes in the data segment. */
 	addExtern(name: string, args: MipsArgument[], token: TokenData) {
 		const label = args[0]
-		if (!label || label.type !== 'label') throw new Error(`${name} expects a label ${this.at(token)}`)
-		const size = this.requireImmediate(args[1], name)
-		if (size < 0) throw new Error(`${name} size must be non-negative ${this.at(token)}`)
+		if (!label || label.type !== 'label') throw new AssemblyError(`${name} expects a label`, at(token))
+		const size = this.requireImmediate(args[1], name, token)
+		if (size < 0) throw new AssemblyError(`${name} size must be non-negative`, at(token))
 
 		const address = this.addresses.data
 		this.definedLabels.add(label.value)
@@ -201,34 +213,34 @@ export class Parser {
 	}
 
 	addDataDirective(name: string, args: MipsArgument[], token: TokenData) {
-		const segment = this.segment as 'data' | 'kdata'
+		const segment = this.segment as DataSegment
 		const start = this.addresses[segment]
 		this.bindPendingLabels(segment, start)
 		let bytes: Array<number | DataValue> = []
 
 		if (name === '.space') {
-			const length = this.requireImmediate(args[0], name)
-			if (length < 0) throw new Error('.space length must be non-negative')
+			const length = this.requireImmediate(args[0], name, token)
+			if (length < 0) throw new AssemblyError('.space length must be non-negative', at(token))
 			bytes = new Array(length).fill(0)
 		} else if (name === '.ascii' || name === '.asciiz') {
 			for (const arg of args) {
-				if (arg.type !== 'string') throw new Error(`${name} expects string operands`)
+				if (arg.type !== 'string') throw new AssemblyError(`${name} expects string operands`, at(token))
 				for (let i = 0; i < arg.value.length; i++) bytes.push(arg.value.charCodeAt(i) & 0xff)
 			}
 			if (name === '.asciiz') bytes.push(0)
 		} else if (name === '.float' || name === '.double') {
 			for (const arg of args) {
-				if (arg.type !== 'immediate') throw new Error(`${name} expects numeric operands`)
+				if (arg.type !== 'immediate') throw new AssemblyError(`${name} expects numeric operands`, at(token))
 				bytes.push(...floatBytes(arg.value, name === '.float' ? 4 : 8))
 			}
 		} else {
 			const width = name === '.word' ? 4 : name === '.half' ? 2 : 1
 			for (const arg of args) {
 				if (arg.type !== 'immediate' && arg.type !== 'label') {
-					throw new Error(`${name} expects numeric or label operands`)
+					throw new AssemblyError(`${name} expects numeric or label operands`, at(token))
 				}
 				if (arg.type === 'immediate' && !Number.isInteger(arg.value)) {
-					throw new Error(`${name} expects integer operands; use .float or .double`)
+					throw new AssemblyError(`${name} expects integer operands; use .float or .double`, at(token))
 				}
 				bytes.push({ value: arg, width })
 			}
@@ -239,7 +251,7 @@ export class Parser {
 	}
 
 	defineLabel(name: string, token: TokenData) {
-		if (this.definedLabels.has(name)) throw new Error(`Duplicate label: ${name} ${this.at(token)}`)
+		if (this.definedLabels.has(name)) throw new AssemblyError(`Duplicate label: ${name}`, at(token))
 		this.definedLabels.add(name)
 		this.pendingLabels[this.segment].push(name)
 	}
@@ -267,20 +279,8 @@ export class Parser {
 		}
 	}
 
-	sourceMapFor(file: string): Map<number, number> {
-		const existing = this.sourceMaps.get(file)
-		if (existing) return existing
-		const created = new Map<number, number>()
-		this.sourceMaps.set(file, created)
-		return created
-	}
-
-	currentAddress() {
-		return this.addresses[this.segment]
-	}
-
-	requireImmediate(arg: MipsArgument | undefined, directive: string): number {
-		if (!arg || arg.type !== 'immediate') throw new Error(`${directive} expects an immediate value`)
+	requireImmediate(arg: MipsArgument | undefined, directive: string, token: TokenData): number {
+		if (!arg || arg.type !== 'immediate') throw new AssemblyError(`${directive} expects an immediate value`, at(token))
 		return arg.value
 	}
 
@@ -353,15 +353,15 @@ export class Parser {
 			// An instruction name in operand position is a label: THRAX allows a
 			// mnemonic to name one, and substitutes an identifier here.
 			if (token.type === 'IDENTIFIER' || token.type === 'INSTRUCTION') {
-				if (label !== null) throw new Error(`Only one label is allowed per expression ${this.at(token)}`)
-				if (sign < 0) throw new Error(`A label cannot be negated ${this.at(token)}`)
+				if (label !== null) throw new AssemblyError('Only one label is allowed per expression', at(token))
+				if (sign < 0) throw new AssemblyError('A label cannot be negated', at(token))
 				label = token.value
 				this.advance()
 			} else if (token.type === 'NUMBER') {
-				value += sign * this.parseNumber(token.value)
+				value += sign * this.parseNumber(token.value, token)
 				this.advance()
 			} else {
-				throw new Error(`Expected a number or label ${this.at(token)}`)
+				throw new AssemblyError('Expected a number or label', at(token))
 			}
 
 			const operator = this.peek()
@@ -384,7 +384,7 @@ export class Parser {
 		return { type: 'memory', offset, register: '$' + register }
 	}
 
-	parseNumber(str: string): number {
+	parseNumber(str: string, token: TokenData): number {
 		if (str.startsWith('0x') || str.startsWith('0X')) {
 			return parseInt(str, 16)
 		}
@@ -393,13 +393,8 @@ export class Parser {
 			return parseInt(str, 8)
 		}
 		const value = Number(str)
-		if (Number.isNaN(value)) throw new Error(`Invalid number: ${str}`)
+		if (Number.isNaN(value)) throw new AssemblyError(`Invalid number: ${str}`, at(token))
 		return value
-	}
-
-	/** Source position of `token`, naming its file when the program has several. */
-	at(token: TokenData): string {
-		return token.file ? `at ${token.file}:${token.line}:${token.column}` : `at line ${token.line}:${token.column}`
 	}
 
 	skipNewlines() {
@@ -419,9 +414,7 @@ export class Parser {
 
 	consume(type: TokenData['type'], message = ''): TokenData {
 		if (this.peek().type !== type) {
-			throw new Error(
-				`${message || `Expected ${type}`} ${this.at(this.peek())}`
-			)
+			throw new AssemblyError(message || `Expected ${type}`, at(this.peek()))
 		}
 		const token = this.peek()
 		this.advance()
