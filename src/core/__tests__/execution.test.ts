@@ -242,6 +242,119 @@ describe('debugging', () => {
 	})
 })
 
+describe('machine state seen by the debugger', () => {
+	it('reports hi and lo after a multiply', async () => {
+		const simulator = await run(withExit('li $t0, 0x10000\nli $t1, 0x10000\nmult $t0, $t1'))
+		const { registers } = simulator.getState()
+		expect(registers.$hi).toBe(1)
+		expect(registers.$lo).toBe(0)
+	})
+
+	it('reports hi and lo after a divide', async () => {
+		const simulator = await run(withExit('li $t0, 17\nli $t1, 5\ndiv $t0, $t1'))
+		const { registers } = simulator.getState()
+		expect(registers.$lo).toBe(3)
+		expect(registers.$hi).toBe(2)
+	})
+
+	it('reports hi and lo written by mthi and mtlo', async () => {
+		const simulator = await run(withExit('li $t0, 7\nli $t1, 9\nmthi $t0\nmtlo $t1'))
+		const { registers } = simulator.getState()
+		expect(registers.$hi).toBe(7)
+		expect(registers.$lo).toBe(9)
+	})
+
+	it('restores hi and lo together on step back', () => {
+		const simulator = build(withExit('li $t0, -1\nli $t1, 2\nmult $t0, $t1\nli $t2, 5\nmthi $t2'))
+		for (let index = 0; index < 5; index += 1) simulator.step()
+		expect(simulator.getState().registers.$hi).toBe(5)
+		simulator.stepBack()
+		const { registers, hi, lo } = simulator.getState()
+		expect(hi).toBe(-1)
+		expect(lo).toBe(-2)
+		expect(registers.$hi).toBe(hi)
+		expect(registers.$lo).toBe(lo)
+	})
+
+	it('shows a moved program counter in the register file', () => {
+		const simulator = build(withExit('li $t0, 1\nli $t1, 2'))
+		simulator.step()
+		simulator.setProgramCounter(0x00400000)
+		expect(simulator.pc).toBe(0x00400000)
+		expect(simulator.getState().registers.$pc).toBe(0x00400000)
+		expect(simulator.halted).toBe(false)
+	})
+
+	it('pauses a run without halting it', () => {
+		const simulator = build(withExit('nop'))
+		simulator.running = true
+		simulator.pause()
+		expect(simulator.paused).toBe(true)
+		expect(simulator.running).toBe(false)
+		expect(simulator.halted).toBe(false)
+	})
+
+	it('takes its pacing settings from configure', () => {
+		const simulator = build(withExit('nop'))
+		simulator.configure({ speed: 10 })
+		expect(simulator.speed).toBe(10)
+		expect(simulator.pacedAddresses).toBeNull()
+		const addresses = new Set([0x00400000])
+		simulator.configure({ pacedAddresses: addresses })
+		expect(simulator.speed).toBe(10)
+		expect(simulator.pacedAddresses).toBe(addresses)
+	})
+})
+
+describe('temporary breakpoints', () => {
+	it('runs to an address without keeping a breakpoint there', async () => {
+		const simulator = build(withExit('li $t0, 1\nli $t1, 2\nli $t2, 3'))
+		await simulator.runTo(0x00400008)
+		expect(simulator.pc).toBe(0x00400008)
+		expect(simulator.registers.$t1).toBe(2)
+		expect(simulator.registers.$t2).toBe(0)
+		expect(simulator.getBreakpoints()).toEqual([])
+	})
+
+	it('keeps a breakpoint that was already on the address it runs to', async () => {
+		const simulator = build(withExit('li $t0, 1\nli $t1, 2\nli $t2, 3'))
+		simulator.addBreakpoint(0x00400008)
+		await simulator.runTo(0x00400008)
+		expect(simulator.getBreakpoints()).toEqual([0x00400008])
+	})
+
+	it('leaves the breakpoint set alone when stepping over a call', async () => {
+		const source = withExit(`jal fn
+li $t1, 2
+li $v0, 10
+syscall
+fn:
+li $t0, 1
+jr $ra`)
+		const simulator = build(source)
+		// A breakpoint on the instruction stepOver returns to must survive the step.
+		simulator.addBreakpoint(0x00400004)
+		await simulator.stepOver()
+		expect(simulator.pc).toBe(0x00400004)
+		expect(simulator.registers.$t0).toBe(1)
+		expect(simulator.getBreakpoints()).toEqual([0x00400004])
+	})
+
+	it('restores a breakpoint on the call it steps over', async () => {
+		const source = withExit(`jal fn
+li $t1, 2
+li $v0, 10
+syscall
+fn:
+li $t0, 1
+jr $ra`)
+		const simulator = build(source)
+		simulator.addBreakpoint(0x00400000)
+		await simulator.stepOver()
+		expect(simulator.getBreakpoints()).toEqual([0x00400000])
+	})
+})
+
 describe('label addressing', () => {
 	it('reads the word a label names, past the first 64KB of the data segment', async () => {
 		const source = withExit('.data\n.space 0x1000\nvalue: .word 1234\n.text\nlw $a0, value\nli $v0, 1\nsyscall')

@@ -9,6 +9,12 @@
 
 import type { Decoded } from './decoder'
 
+/** What a tool needs to know about the machine, as opposed to the run on it. */
+export interface MachineConfig {
+	/** THRAX's delayed branching: the instruction after a branch runs first. */
+	delayedBranching: boolean
+}
+
 export interface ExecutionObserver {
 	/** Before `decoded` at `address` runs. */
 	onInstruction?(address: number, decoded: Decoded): void
@@ -22,4 +28,9 @@ export interface ExecutionObserver {
 	onBranch?(address: number, taken: boolean, target: number): void
 	/** Execution restarted, so accumulated counts belong to the previous run. */
 	onReset?(): void
+	/**
+	 * The machine the coming run is on, dispatched once as the tool is attached.
+	 * It describes the hardware rather than the run, so a reset does not undo it.
+	 */
+	onConfigure?(machine: MachineConfig): void
 }

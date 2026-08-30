@@ -116,7 +116,7 @@ export class MipsSimulator {
 	/** Instructions per second while running, or null to run flat out. */
 	speed: number | null
 	/** Addresses a paced run animates; null paces every instruction. */
-	pacedAddresses: Set<number> | null
+	pacedAddresses: ReadonlySet<number> | null
 	/** Called after each batch so a paced run can be watched. */
 	onProgress: (() => void) | null
 	/** Tools watching this run.  Empty is the fast path. */
@@ -151,8 +151,7 @@ export class MipsSimulator {
 		// multi-gigabyte browser array.
 		this.memory = new Map()
 		this.pc = this.entryAddress()
-		this.hi = 0
-		this.lo = 0
+		this.setHiLo(0, 0)
 		this.console = ''
 		this.running = false
 		this.halted = false
@@ -436,8 +435,7 @@ export class MipsSimulator {
 		this.undoMemoryWrites(snapshot.memoryUndo)
 		this.console = snapshot.console
 		this.pc = snapshot.pc
-		this.hi = snapshot.hi
-		this.lo = snapshot.lo
+		this.setHiLo(snapshot.hi, snapshot.lo)
 		this.instructionCount = snapshot.instructionCount
 		this.halted = snapshot.halted
 		this.callStack = snapshot.callStack.map((frame) => ({ ...frame }))
@@ -490,21 +488,37 @@ export class MipsSimulator {
 		}
 	}
 
+	/**
+	 * Runs with a breakpoint at `address` that the caller never asked for, leaving
+	 * the breakpoint set exactly as it was found however the run ends.  Stepping
+	 * over a call also has to lift the breakpoint it is standing on, or the run
+	 * would stop before it started.
+	 */
+	async runToTemporaryBreakpoint(address: number, liftCurrent: boolean) {
+		const currentAddress = this.pc
+		const restoreCurrent = liftCurrent && this.breakpoints.delete(currentAddress)
+		const wanted = this.breakpoints.has(address)
+		this.breakpoints.add(address)
+		try {
+			await this.run()
+		} finally {
+			if (restoreCurrent) this.breakpoints.add(currentAddress)
+			if (!wanted) this.breakpoints.delete(address)
+		}
+	}
+
+	/** Runs until `address` is reached, without leaving a breakpoint behind. */
+	async runTo(address: number) {
+		this.paused = false
+		await this.runToTemporaryBreakpoint(address, false)
+	}
+
 	async stepOver() {
-		// Skip over function calls
-		{
-			const decoded = this.decodeAt(this.pc)
-			if (decoded?.op === 'JAL' || decoded?.op === 'JALR') {
-				// Set a breakpoint at the next instruction
-				const currentAddress = this.pc
-				const restoreCurrentBreakpoint = this.breakpoints.delete(currentAddress)
-				const nextAddr = this.pc + 4
-				this.breakpoints.add(nextAddr)
-				await this.run()
-				if (restoreCurrentBreakpoint) this.breakpoints.add(currentAddress)
-				this.breakpoints.delete(nextAddr)
-				return
-			}
+		// A call runs to completion; anything else is a plain step.
+		const decoded = this.decodeAt(this.pc)
+		if (decoded?.op === 'JAL' || decoded?.op === 'JALR') {
+			await this.runToTemporaryBreakpoint(this.pc + 4, true)
+			return
 		}
 		this.step()
 	}
@@ -522,6 +536,25 @@ export class MipsSimulator {
 	async continue() {
 		this.paused = false
 		await this.run()
+	}
+
+	/** Stops a run where it stands, leaving it able to continue. */
+	pause() {
+		this.paused = true
+		this.running = false
+	}
+
+	/** Moves execution to `address` without running anything. */
+	setProgramCounter(address: number) {
+		this.pc = address >>> 0
+		this.halted = false
+		this.registers['$pc'] = this.pc
+	}
+
+	/** Applies the run-pacing settings the workspace holds. */
+	configure(options: { speed?: number | null, pacedAddresses?: ReadonlySet<number> | null }) {
+		if (options.speed !== undefined) this.speed = options.speed
+		if (options.pacedAddresses !== undefined) this.pacedAddresses = options.pacedAddresses
 	}
 
 	addBreakpoint(address) {
@@ -575,6 +608,14 @@ export class MipsSimulator {
 
 	writeReg(number: number, value: number) {
 		if (number !== 0) this.registers[REGISTER_NAMES[number]] = value | 0
+	}
+
+	/** Hi and Lo are register-file entries as well as fields, so they move together. */
+	private setHiLo(hi: number, lo: number) {
+		this.hi = hi | 0
+		this.lo = lo | 0
+		this.registers['$hi'] = this.hi
+		this.registers['$lo'] = this.lo
 	}
 
 	/** Branches are relative to the instruction after this one. */
@@ -693,14 +734,12 @@ export class MipsSimulator {
 				// Multiply and divide
 				case 'MULT': {
 					const product = BigInt(this.readReg(rs)) * BigInt(this.readReg(rt))
-					this.lo = Number(BigInt.asIntN(32, product))
-					this.hi = Number(BigInt.asIntN(32, product >> 32n))
+					this.setHiLo(Number(BigInt.asIntN(32, product >> 32n)), Number(BigInt.asIntN(32, product)))
 					return
 				}
 				case 'MULTU': {
 					const product = BigInt(this.readReg(rs) >>> 0) * BigInt(this.readReg(rt) >>> 0)
-					this.lo = Number(BigInt.asIntN(32, product))
-					this.hi = Number(BigInt.asIntN(32, product >> 32n))
+					this.setHiLo(Number(BigInt.asIntN(32, product >> 32n)), Number(BigInt.asIntN(32, product)))
 					return
 				}
 				case 'DIV': {
@@ -708,16 +747,14 @@ export class MipsSimulator {
 					const divisor = this.readReg(rt)
 					if (divisor === 0) return
 					// MIPS truncates the quotient toward zero.
-					this.lo = (dividend / divisor) | 0
-					this.hi = (dividend % divisor) | 0
+					this.setHiLo(dividend % divisor, dividend / divisor)
 					return
 				}
 				case 'DIVU': {
 					const dividend = this.readReg(rs) >>> 0
 					const divisor = this.readReg(rt) >>> 0
 					if (divisor === 0) return
-					this.lo = Math.floor(dividend / divisor) | 0
-					this.hi = (dividend % divisor) | 0
+					this.setHiLo(dividend % divisor, Math.floor(dividend / divisor))
 					return
 				}
 				case 'MFHI':
@@ -727,10 +764,10 @@ export class MipsSimulator {
 					this.writeReg(rd, this.lo)
 					return
 				case 'MTHI':
-					this.hi = this.readReg(rs)
+					this.setHiLo(this.readReg(rs), this.lo)
 					return
 				case 'MTLO':
-					this.lo = this.readReg(rs)
+					this.setHiLo(this.hi, this.readReg(rs))
 					return
 
 				// Load and store
