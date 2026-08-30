@@ -13,6 +13,20 @@ export const REGISTER_NAMES = [
 	'$t8', '$t9', '$k0', '$k1', '$gp', '$sp', '$fp', '$ra',
 ]
 
+/**
+ * Every name the register file is keyed by, in a fixed order.  A history entry
+ * names a register by its place here rather than by its name, since a number
+ * fits a column and a string does not.
+ */
+export const REGISTER_FILE_NAMES = [...REGISTER_NAMES, '$pc', '$hi', '$lo']
+
+const FILE_INDEX = new Map(REGISTER_FILE_NAMES.map((name, index) => [name, index]))
+
+/** Where `name` sits in the register file, or -1 when it is not one of them. */
+export function registerFileIndex(name: string): number {
+	return FILE_INDEX.get(name) ?? -1
+}
+
 const NUMBERS: Record<string, number> = Object.fromEntries([
 	...REGISTER_NAMES.map((name, number) => [name, number]),
 	...REGISTER_NAMES.map((_name, number) => [`$${number}`, number]),

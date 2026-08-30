@@ -24,6 +24,12 @@ export interface TokenData {
 	column: number
 	/** Source file the token came from, for multi-file assembly. */
 	file?: string
+	/**
+	 * Translation unit the token belongs to: the file assembled in its own
+	 * right.  An `.include` is spliced into its includer, so its tokens keep
+	 * their own `file` but take the includer's `unit`.
+	 */
+	unit?: string
 }
 
 /** One problem found while assembling, positioned where the editor can mark it. */
@@ -34,6 +40,8 @@ export interface Diagnostic {
 	line?: number
 	column?: number
 	endColumn?: number
+	/** Stable identifier so `warningsAreErrors` can promote some warnings and not others. */
+	code?: string
 }
 
 export interface RegisterArgument { type: 'register'; value: string }
@@ -46,6 +54,10 @@ export interface MemoryArgument { type: 'memory'; offset: ImmediateArgument | La
 export type MipsArgument = RegisterArgument | ImmediateArgument | LabelArgument | StringArgument | MemoryArgument
 
 export interface DataValue { value: ImmediateArgument | LabelArgument; width: number }
+
+/** A label definition, tagged with the translation unit whose table owns it. */
+export interface LabelRef { name: string; unit: string }
+
 export interface DataEntry {
 	address: number
 	bytes: Array<number | DataValue>
@@ -54,6 +66,8 @@ export interface DataEntry {
 	/** Line and file of the directive, for the editor's gutter. */
 	sourceLine?: number
 	sourceFile?: string
+	/** Translation unit whose symbols a label operand here resolves against. */
+	unit?: string
 }
 /** Segments an instruction can live in; `.data` and `.kdata` hold no instructions. */
 export type TextSegment = 'text' | 'ktext'
@@ -62,21 +76,41 @@ export type Segment = TextSegment | 'data' | 'kdata'
 export interface MipsInstruction {
 	name: string
 	args: MipsArgument[]
-	labels: string[]
+	labels: LabelRef[]
 	address: number | null
 	sourceLine: number
 	/** Column of the mnemonic, so an error here can be marked in the editor. */
 	sourceColumn?: number
 	sourceFile?: string
+	/** Translation unit whose symbols this instruction's labels resolve against. */
+	unit?: string
 	segment?: TextSegment
 }
 
 /** Labels left dangling at the end of a text segment, resolved after layout. */
-export interface SegmentEndLabels { segment: TextSegment; labels: string[] }
+export interface SegmentEndLabels { segment: TextSegment; labels: LabelRef[] }
+
+/**
+ * Symbols are scoped to the file that defined them.  `.globl` moves a name out
+ * of its file's table into the one every file can see, and a reference resolves
+ * against its own file first, then the global table.
+ */
+export interface SymbolTables {
+	/** Per translation unit, the names only that unit can see. */
+	locals: Map<string, Map<string, number>>
+	/** Names declared `.globl`, and the `.extern` region, visible everywhere. */
+	globals: Map<string, number>
+}
 
 export interface MipsProgram {
 	instructions: MipsInstruction[]
+	/**
+	 * Every symbol in one map, for naming an address and for finding the entry
+	 * point.  Resolution uses `symbols`, since a name here may belong to a file
+	 * the reference cannot see.
+	 */
 	labels: Map<string, number>
+	symbols: SymbolTables
 	data: DataEntry[]
 	/** Which line of which file every machine word came from. */
 	sourceIndex: SourceIndex
@@ -103,7 +137,7 @@ export interface CoprocessorState {
 	fpRegisters: number[]
 	/** The eight CP1 condition codes set by `c.eq.s` and friends. */
 	fpConditionFlags: boolean[]
-	/** CP0 registers, of which THRAX shows vaddr, status, cause, and epc. */
+	/** CP0 registers, of which vaddr, status, cause, and epc are shown. */
 	cp0Registers: number[]
 }
 
@@ -115,33 +149,18 @@ export interface KeyboardDisplayState {
 	displayOutput: string
 }
 
-/** One memory word as it stood before an instruction wrote to it. */
-export interface MemoryUndoEntry {
-	wordAddress: number
-	/** The previous value, or undefined when the word did not exist. */
-	value: number | undefined
+/** Serialized state of the syscall 13-16 file table, produced by `FileTable.snapshot`. */
+export interface FilesSnapshot {
+	contents: Array<{ name: string, bytes: number[] }>
+	open: Array<{ descriptor: number, name: string, writable: boolean, position: number }>
+	/** Descriptors are handed out in order and never reused, so this restores too. */
+	nextDescriptor: number
 }
 
-export interface ExecutionSnapshot extends CoprocessorState {
-	address: number
-	/** Source metadata for the executed word, when the debugger has any. */
-	instruction: MipsInstruction | null
-	registers: Registers
-	/** Only what this instruction changed, so a snapshot costs what it writes. */
-	memoryUndo: MemoryUndoEntry[]
-	console: string
-	pc: number
-	hi: number
-	lo: number
-	instructionCount: number
-	halted: boolean
-	paused: boolean
-	callStack: CallFrame[]
-	heapPointer: number
-	keyboardDisplay: KeyboardDisplayState
-	/** A delayed branch in flight, so backstepping into a delay slot resumes it. */
-	delayState: 'none' | 'registered' | 'triggered'
-	delayedTarget: number
+/** Serialized state of the syscall 40-44 random streams, produced by `RandomStreams.snapshot`. */
+export interface RandomSnapshot {
+	/** Per-stream LCG state, as a string since the generator's state is a bigint. */
+	streams: Array<{ id: number, seed: string }>
 }
 
 export interface CallFrame {
@@ -159,6 +178,89 @@ export interface PendingInput {
 	prompt?: string
 	/** Dialog reads report an outcome in `$a1` and can be cancelled. */
 	dialog?: boolean
+}
+
+/** How far along a delayed branch is when an instruction begins. */
+export type DelayState = 'none' | 'registered' | 'triggered'
+
+/**
+ * One thing an instruction changed.
+ *
+ * An effect holds the value that is **not** in the machine.  Behind the present
+ * that is what the instruction destroyed, which is what a step back needs.
+ * Ahead of it, once the effect has been applied, it holds what the instruction
+ * produced, which is what running forward needs and what nothing else can
+ * reproduce for a syscall that read the console or the clock.
+ *
+ * Applying an effect exchanges the two, so one operation serves both
+ * directions and neither value is ever stored twice.
+ */
+export type Effect =
+	| { kind: 'register', name: string, value: number }
+	| { kind: 'fp', index: number, value: number }
+	| { kind: 'flag', index: number, value: boolean }
+	| { kind: 'cp0', index: number, value: number }
+	/** A run of words from `wordAddress` up, `undefined` where a word did not exist. */
+	| { kind: 'memory', wordAddress: number, words: Array<number | undefined> }
+	/** Text appended to the console: dropped going back, appended going forward. */
+	| { kind: 'console', text: string }
+	/** Syscall 60 empties the console, so the whole of it has to be kept. */
+	| { kind: 'consoleReset', value: string }
+	| { kind: 'display', value: string }
+	/** A read of the receiver register took a character out of the queue. */
+	| { kind: 'queuedInput', value: string }
+	/** A call frame: taken off going one way, put back going the other. */
+	| { kind: 'call', frame: CallFrame }
+	| { kind: 'hiLo', hi: number, lo: number }
+	| { kind: 'heapPointer', value: number }
+	| { kind: 'halted', value: boolean }
+	| { kind: 'exitCode', value: number | null }
+	| { kind: 'sleep', value: number }
+	/**
+	 * What the user typed at a console or dialog read.  The registers and memory
+	 * it landed in are effects of their own, so this changes nothing on the way
+	 * back or forward; it is here so the history panel can show the answer.
+	 */
+	| { kind: 'input', value: string }
+
+/** One executed instruction, or one edit the user made, and what it did. */
+export interface HistoryEntry {
+	/**
+	 * Monotonic, and distinct from an array index: the log is a ring that drops
+	 * its oldest entry past the limit, so an index the panel captured would
+	 * slide out from under it.
+	 */
+	id: number
+	/** The count before this instruction ran. */
+	instructionCount: number
+	address: number
+	/** The word executed, for the panel to disassemble. */
+	word: number | null
+	/** Source metadata for that word, when the debugger has any. */
+	instruction: MipsInstruction | null
+	kind: 'instruction' | 'edit'
+	/**
+	 * Where execution stood, exchanged like an effect: behind the present this
+	 * is where the instruction started, ahead of it where it went.  These live
+	 * on the entry rather than in `effects` because every instruction moves the
+	 * pc, and an effect object of its own costs more than three fields here.
+	 */
+	pc: number
+	delayState: DelayState
+	delayedTarget: number
+	/**
+	 * The run of effects this entry owns, in the shared store.  Held as an index
+	 * rather than an array of its own: an array per entry costs more in empty
+	 * slots than the effects themselves.
+	 */
+	effectStart: number
+	effectCount: number
+	/**
+	 * Copied whole, but only by the instructions that touch them: a file syscall
+	 * and a random draw are rare, and neither inverts from its effects.
+	 */
+	files?: FilesSnapshot
+	random?: RandomSnapshot
 }
 
 export interface SimulatorState extends CoprocessorState {
