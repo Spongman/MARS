@@ -62,6 +62,31 @@ buffer:	.space 16
 		expect((await run(source)).registers.$s0).toBe(-1)
 	})
 
+	it('reports no status from a close', async () => {
+		// `SyscallClose.java:28-30` calls a void `SystemIO.closeFile` and never
+		// touches $v0, so $v0 still holds the service number afterwards.
+		const source = withExit(`
+.data
+name:	.asciiz "c.txt"
+.text
+	la $a0, name
+	li $a1, 1
+	li $v0, 13
+	syscall
+	move $a0, $v0
+	li $v0, 16
+	syscall
+	move $s0, $v0
+	li $a0, 99
+	li $v0, 16
+	syscall
+	move $s1, $v0
+`)
+		const simulator = await run(source)
+		expect(simulator.registers.$s0).toBe(16)
+		expect(simulator.registers.$s1).toBe(16)
+	})
+
 	it('appends to an existing file rather than truncating it', async () => {
 		const source = withExit(`
 .data
@@ -232,8 +257,40 @@ describe('dialog syscalls', () => {
 		await simulator.run()
 		simulator.provideInput('ada')
 		await simulator.run()
-		expect(simulator.console).toBe('ada')
+		// A string that fits is newline-terminated inside the buffer
+		// (`SyscallInputDialogString.java:59-63`).
+		expect(simulator.console).toBe('ada\n')
 		expect(simulator.registers.$a1).toBe(0)
+	})
+
+	it('reports -4 when the string does not fit the buffer', async () => {
+		// `SyscallInputDialogString.java:64-72`: the buffer is $a2 bytes, one of
+		// them the terminator, and $a1 is -4 when the input was longer.
+		const source = withExit('.data\nask: .asciiz "n?"\nbuffer: .space 8\n.text\nla $a0, ask\nla $a1, buffer\nli $a2, 4\nli $v0, 54\nsyscall\nla $a0, buffer\nli $v0, 4\nsyscall')
+		const simulator = build(source)
+		await simulator.run()
+		simulator.provideInput('abcdef')
+		await simulator.run()
+		expect(simulator.console).toBe('abc')
+		expect(simulator.registers.$a1).toBe(-4)
+	})
+
+	it('reports an empty field apart from bad input, and zeroes the value', async () => {
+		// `SyscallInputDialogInt.java:63-70`: cancel is -2, OK with nothing typed
+		// is -3, and $a0 is zeroed in both cases.
+		const source = withExit('.data\nask: .asciiz "n?"\n.text\nla $a0, ask\nli $v0, 51\nsyscall')
+
+		const empty = build(source)
+		await empty.run()
+		empty.provideInput('')
+		expect(empty.registers.$a1).toBe(-3)
+		expect(empty.registers.$a0).toBe(0)
+
+		const bad = build(source)
+		await bad.run()
+		bad.provideInput('not a number')
+		expect(bad.registers.$a1).toBe(-1)
+		expect(bad.registers.$a0).toBe(0)
 	})
 
 	it('prints message dialogs to the console', async () => {
@@ -267,6 +324,31 @@ describe('midi syscalls', () => {
 	it('stays silent when no player is attached', async () => {
 		const simulator = await run(withExit('li $a0, 60\nli $a1, 1\nli $v0, 33\nsyscall\nli $t0, 1'))
 		expect(simulator.registers.$t0).toBe(1)
+	})
+
+	it('falls back to the default note for out-of-range arguments', async () => {
+		// `SyscallMidiOut.java:60-63` replaces a value outside 0-127 with the
+		// default from `ToneGenerator.java:69-84`; it does not mask the low bits.
+		const played: unknown[] = []
+		const simulator = build(withExit('li $a0, 200\nli $a1, -1\nli $a2, 300\nli $a3, 999\nli $v0, 31\nsyscall'))
+		simulator.midi = { play: (note) => played.push(note) }
+		await simulator.run()
+		expect(played).toEqual([{ pitch: 60, durationMs: 1000, instrument: 0, volume: 100 }])
+	})
+
+	it('waits out the default duration when syscall 33 is given a negative one', async () => {
+		const simulator = build(withExit('li $a0, 60\nli $a1, -1\nli $v0, 33\nnoteCall:\nsyscall'))
+		await simulator.runTo(simulator.program.labels.get('noteCall')!)
+		simulator.step()
+		expect(simulator.pendingSleepMs).toBe(1000)
+	})
+})
+
+describe('clear screen', () => {
+	it('empties the console and keeps running', async () => {
+		// `SyscallClearScreen.java:18` empties the run text area.
+		const source = withExit('.data\nnoise: .asciiz "noise"\nkept: .asciiz "kept"\n.text\nla $a0, noise\nli $v0, 4\nsyscall\nli $v0, 60\nsyscall\nla $a0, kept\nli $v0, 4\nsyscall')
+		expect(await output(source)).toBe('kept')
 	})
 })
 

@@ -3,14 +3,16 @@
  *
  * A browser tab has no filesystem to open, so files live in memory for the
  * lifetime of the run.  A program can write a file and read it back, which is
- * what the THRAX file exercises need; descriptors 0, 1, and 2 keep their usual
+ * what the file exercises need; descriptors 0, 1, and 2 keep their usual
  * meanings and are wired to the console by the simulator.
  */
+
+import type { FilesSnapshot } from './types'
 
 export const STDOUT = 1
 export const STDERR = 2
 
-/** THRAX open flags: read, write (truncating), and write (appending). */
+/** Open flags: read, write (truncating), and write (appending). */
 export const O_RDONLY = 0
 export const O_WRONLY = 1
 export const O_APPEND = 9
@@ -76,5 +78,25 @@ export class FileTable {
 
 	names(): string[] {
 		return [...this.contents.keys()]
+	}
+
+	/**
+	 * The whole table, deeply copied, so a backstep can put it back (bug 14).
+	 * Only the syscalls that touch a file ask for one, so the cost lands on the
+	 * rare instruction rather than on every step.
+	 */
+	snapshot(): FilesSnapshot {
+		return {
+			contents: [...this.contents].map(([name, bytes]) => ({ name, bytes: [...bytes] })),
+			open: [...this.open].map(([descriptor, file]) => ({ descriptor, ...file })),
+			nextDescriptor: this.nextDescriptor,
+		}
+	}
+
+	/** Puts back a `snapshot`, discarding everything the table holds now. */
+	restore(snapshot: FilesSnapshot) {
+		this.contents = new Map(snapshot.contents.map(({ name, bytes }) => [name, [...bytes]]))
+		this.open = new Map(snapshot.open.map(({ descriptor, name, writable, position }) => [descriptor, { name, writable, position }]))
+		this.nextDescriptor = snapshot.nextDescriptor
 	}
 }

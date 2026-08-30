@@ -1,10 +1,11 @@
 /**
  * Pseudo-random streams for syscalls 40-44.
  *
- * THRAX keeps a `java.util.Random` per identifier, so a program that seeds a
- * stream gets the same sequence there as it does here: this is that generator,
- * a 48-bit linear congruential engine, reproduced exactly.
+ * One stream per identifier, so a program that seeds a stream gets the same
+ * sequence on every run: a 48-bit linear congruential engine.
  */
+
+import type { RandomSnapshot } from './types'
 
 const MULTIPLIER = 0x5deece66dn
 const ADDEND = 0xbn
@@ -52,6 +53,15 @@ export class JavaRandom {
 	nextDouble(): number {
 		return (this.next(26) * 134217728 + this.next(27)) / 9007199254740992
 	}
+
+	/** The engine's whole state, which is its 48-bit seed. */
+	state(): bigint {
+		return this.seed
+	}
+
+	setState(state: bigint) {
+		this.seed = state & MASK
+	}
 }
 
 /** The set of named streams a program has used, created on first reference. */
@@ -69,5 +79,22 @@ export class RandomStreams {
 
 	setSeed(id: number, seed: number) {
 		this.stream(id).setSeed(seed)
+	}
+
+	/**
+	 * Every stream's engine state, so a backstep can put it back and a replayed
+	 * draw returns what it returned the first time (bug 14).
+	 */
+	snapshot(): RandomSnapshot {
+		return { streams: [...this.streams].map(([id, stream]) => ({ id, seed: stream.state().toString() })) }
+	}
+
+	/** Puts back a `snapshot`, dropping streams created since it was taken. */
+	restore(snapshot: RandomSnapshot) {
+		this.streams = new Map(snapshot.streams.map(({ id, seed }) => {
+			const stream = new JavaRandom()
+			stream.setState(BigInt(seed))
+			return [id, stream]
+		}))
 	}
 }

@@ -142,8 +142,8 @@ end:
 	})
 
 	it('tracks the call stack while inside a subroutine', () => {
-		// The subroutine is called `sub`, which is also a mnemonic: THRAX allows
-		// an instruction name to label a location, so this has to assemble.
+		// The subroutine is called `sub`, which is also a mnemonic: an
+		// instruction name may label a location, so this has to assemble.
 		const simulator = build(withExit('jal sub\nj end\nsub:\njr $ra\nend:'))
 		simulator.step()
 		expect(simulator.getCallStack()).toHaveLength(1)
@@ -223,6 +223,19 @@ describe('debugging', () => {
 		await simulator.run()
 		expect(simulator.pc).toBe(0x00400008)
 		expect(simulator.registers.$t2).toBe(0)
+	})
+
+	it('continues past the breakpoint it stopped on', async () => {
+		const simulator = build(withExit('li $t0, 1\nli $t1, 2\nli $t2, 3'))
+		simulator.addBreakpoint(0x00400004)
+		await simulator.run()
+		expect(simulator.pc).toBe(0x00400004)
+
+		// Continuing steps off the breakpoint under the pc instead of re-stopping
+		// on it, or the debugger's continue button would do nothing.
+		await simulator.continue()
+		expect(simulator.halted).toBe(true)
+		expect(simulator.registers.$t2).toBe(3)
 	})
 
 	it('restores state on step back', () => {
