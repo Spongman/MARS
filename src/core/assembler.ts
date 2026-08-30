@@ -696,7 +696,7 @@ export class Assembler {
 
 	encodeInstruction(instr: MipsInstruction): number {
 		const name = instr.name
-		this.currentAddress = instr.address
+		this.currentAddress = instr.address ?? 0
 		this.currentInstruction = instr
 
 		// Resolve labels in arguments
