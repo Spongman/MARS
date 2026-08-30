@@ -2,8 +2,9 @@
  * MIPS Lexer - Tokenizes MIPS assembly code
  */
 
-import { AssemblyError } from './diagnostics'
-import type { TokenData, TokenType } from './types'
+import { AssemblyError, formatPosition } from './diagnostics'
+import { isInstructionMnemonic } from './isa'
+import type { Diagnostic, TokenData, TokenType } from './types'
 
 export class Token implements TokenData {
 	constructor(
@@ -22,6 +23,8 @@ export class Lexer {
 	line: number
 	column: number
 	tokens: Token[]
+	/** Warnings the lexer records rather than throws; an error still throws. */
+	diagnostics: Diagnostic[]
 
 	constructor(source: string, public file = '') {
 		this.source = source
@@ -29,6 +32,7 @@ export class Lexer {
 		this.line = 1
 		this.column = 1
 		this.tokens = []
+		this.diagnostics = []
 	}
 
 
@@ -132,7 +136,7 @@ export class Lexer {
 		}
 
 		// Mnemonics match without regard to case, but the token keeps the source
-		// spelling: the same word may be naming a label, as THRAX permits.
+		// spelling: the same word may be naming a label.
 		if (this.isInstruction(value.toUpperCase())) {
 			return new Token('INSTRUCTION', value, line, col)
 		}
@@ -164,16 +168,18 @@ export class Lexer {
 		const line = this.line
 		const col = this.column
 		let value = ''
-		let isHex = false
+		// Either case of the `0x` prefix starts a hexadecimal literal; there is
+		// no binary prefix.
+		const isHex = this.peek() === '0' && /[xX]/.test(this.peekNext())
 
-		if (this.peek() === '0' && this.peekNext() === 'x') {
-			isHex = true
+		if (isHex) {
 			value += this.peek()
 			this.advance()
 			value += this.peek()
 			this.advance()
 		}
 
+		const prefix = value.length
 		const validChars = isHex
 			? (c: string) => /[0-9a-fA-F]/.test(c)
 			: (c: string) => this.isDigit(c)
@@ -183,9 +189,31 @@ export class Lexer {
 			this.advance()
 		}
 
-		if (!isHex) value += this.readFraction()
+		if (isHex) {
+			if (value.length === prefix) throw this.error(`Hexadecimal literal "${value}" has no digits`, line, col)
+		} else {
+			value += this.readFraction()
+			this.warnLeadingZero(value, line, col)
+		}
 
 		return new Token('NUMBER', value, line, col)
+	}
+
+	/**
+	 * A leading zero means octal (`parser.parseNumber`).  A digit above 7
+	 * makes the literal decimal rather than an error, since rejecting it
+	 * would break existing source.  Warned, not silent.
+	 */
+	warnLeadingZero(value: string, line: number, column: number) {
+		if (!/^0[0-9]*[89][0-9]*$/.test(value)) return
+		const position = { file: this.file || undefined, line, column, endColumn: column + value.length }
+		this.diagnostics.push({
+			severity: 'warning',
+			code: 'leading-zero-literal',
+			message: `Leading-zero literal "${value}" is read as decimal ${Number.parseInt(value, 10)}; ` +
+				`a leading zero otherwise means octal ${formatPosition(position)}`,
+			...position,
+		})
 	}
 
 	/** Fractional and exponent digits of a floating-point literal, if present. */
@@ -253,8 +281,8 @@ export class Lexer {
 	}
 
 	/**
-	 * `'\\377'`, an octal code point.  THRAX accepts exactly three octal digits
-	 * here and only inside a character literal, never inside a string.
+	 * `'\\377'`, an octal code point: exactly three octal digits, and only
+	 * inside a character literal, never inside a string.
 	 */
 	readOctalEscape(): string | null {
 		const digits = this.peek(1) + this.peek(2) + this.peek(3)
@@ -294,8 +322,7 @@ export class Lexer {
 
 	/**
 	 * Runs to the end of the line but leaves the terminator, so the newline still
-	 * becomes a token.  THRAX tokenizes one line at a time and so cannot lose a
-	 * line boundary to a comment; keeping the newline gives the same guarantee.
+	 * becomes a token, so a comment can never swallow a line boundary.
 	 */
 	skipComment() {
 		while (this.pos < this.source.length && this.peek() !== '\n') {
@@ -303,48 +330,12 @@ export class Lexer {
 		}
 	}
 
+	/**
+	 * The union of the basic and pseudo mnemonics (`isa.ts`), including `bal`,
+	 * `li.s` and `li.d`, which would otherwise lex as identifiers.
+	 */
 	isInstruction(word: string): boolean {
-		const instructions = new Set([
-			// Arithmetic
-			'ADD', 'ADDI', 'ADDIU', 'ADDU', 'SUB', 'SUBU',
-			'MUL', 'MULT', 'MULTU', 'DIV', 'DIVU',
-			// Logical
-			'AND', 'ANDI', 'OR', 'ORI', 'XOR', 'XORI', 'NOR',
-			'SLL', 'SRL', 'SRA', 'SLLV', 'SRLV', 'SRAV',
-			// Comparison
-			'SLT', 'SLTI', 'SLTU', 'SLTIU',
-			// Jump & Branch
-		'BEQ', 'BNE', 'BEQZ', 'BNEZ', 'B', 'BAL', 'BGEZ', 'BGTZ', 'BLEZ', 'BLTZ', 'BLT', 'BLE', 'BGT', 'BGE', 'BLTU', 'BLEU', 'BGTU', 'BGEU',
-			'J', 'JAL', 'JR', 'JALR',
-			// Load & Store
-			'LW', 'LH', 'LB', 'LHU', 'LBU',
-			'SW', 'SH', 'SB',
-			'LUI', 'LA',
-			// Move
-			'MFHI', 'MFLO', 'MTHI', 'MTLO',
-			// Pseudo-instructions
-			'SUBI', 'SUBIU', 'MULU', 'ROL', 'ROR', 'LD', 'SD', 'MFC1.D', 'MTC1.D',
-			'LL', 'SC', 'LWL', 'LWR', 'SWL', 'SWR', 'BREAK',
-			'ULW', 'ULH', 'ULHU', 'USW', 'USH', 'MULO', 'MULOU',
-		'MOVE', 'LI', 'NOP', 'NOT', 'NEG', 'NEGU', 'ABS', 'SEQ', 'SNE', 'SGT', 'SGTU', 'SGE', 'SGEU', 'SLE', 'SLEU', 'REM', 'REMU',
-			// Coprocessor 0
-			'MFC0', 'MTC0', 'ERET',
-			// Coprocessor 1 load/store and moves
-			'LWC1', 'SWC1', 'LDC1', 'SDC1', 'L.S', 'L.D', 'S.S', 'S.D', 'LI.S', 'LI.D',
-			'MFC1', 'MTC1', 'MOV.S', 'MOV.D', 'MOVF', 'MOVT',
-			// Coprocessor 1 arithmetic
-			'ADD.S', 'ADD.D', 'SUB.S', 'SUB.D', 'MUL.S', 'MUL.D', 'DIV.S', 'DIV.D',
-			'ABS.S', 'ABS.D', 'NEG.S', 'NEG.D', 'SQRT.S', 'SQRT.D',
-			// Coprocessor 1 conversions
-			'CVT.S.W', 'CVT.S.D', 'CVT.D.W', 'CVT.D.S', 'CVT.W.S', 'CVT.W.D',
-			'ROUND.W.S', 'ROUND.W.D', 'TRUNC.W.S', 'TRUNC.W.D',
-			'CEIL.W.S', 'CEIL.W.D', 'FLOOR.W.S', 'FLOOR.W.D',
-			// Coprocessor 1 comparison and branch
-			'C.EQ.S', 'C.EQ.D', 'C.LT.S', 'C.LT.D', 'C.LE.S', 'C.LE.D', 'BC1T', 'BC1F',
-			// Syscall
-			'SYSCALL',
-		])
-		return instructions.has(word)
+		return isInstructionMnemonic(word)
 	}
 
 	isAlpha(char: string): boolean {

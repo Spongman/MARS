@@ -1,5 +1,5 @@
 import { bitsToDouble, bitsToSingle, formatDouble, formatSingle } from './coprocessor'
-import { decode, type Decoded } from './decoder'
+import { decode, type Decoded, type DecodedOperand } from './decoder'
 import { formatHex, formatWord } from './format'
 import { REGISTER_NAMES } from './registers'
 import type { CodeWord } from './types'
@@ -19,38 +19,33 @@ const branchTarget = (address: number | undefined, offset: number) =>
 const jumpTarget = (address: number | undefined, index: number) =>
 	hex(address === undefined ? index << 2 : ((address & 0xf0000000) | (index << 2)) >>> 0)
 
+/**
+ * Renders one operand as the isa table's own example spells it, so a form's
+ * syntax is described in one place.  The FP condition code comes first for
+ * `bc1t`/`bc1f`/`c.cond.fmt` and last for the conditional moves
+ *, which is the operand order
+ * the table already carries.
+ */
+function operand(decoded: DecodedOperand, address: number | undefined): string {
+	const { value } = decoded
+	switch (decoded.kind) {
+		case 'gpr': return register(value)
+		case 'fpr':
+		case 'fpr-even': return fpRegister(value)
+		case 'cp0': return `$${value}`
+		case 'imm16u': return hexImmediate(value)
+		case 'label': return branchTarget(address, value)
+		case 'target26': return jumpTarget(address, value)
+		case 'mem': return `${value}(${register(decoded.base ?? 0)})`
+		// The remaining kinds are plain numbers: shift amounts, condition codes,
+		// signed immediates, and the `break` code.
+		default: return `${value}`
+	}
+}
+
 /** Renders a decoded instruction's operands in its own layout. */
 function operands(decoded: Decoded, address: number | undefined): string {
-	const { rs, rt, rd, shamt, ft, fs, fd, imm, uimm, index } = decoded
-
-	switch (decoded.shape) {
-		case 'rd,rs,rt': return `${register(rd)}, ${register(rs)}, ${register(rt)}`
-		case 'rd,rt,shamt': return `${register(rd)}, ${register(rt)}, ${shamt}`
-		case 'rd,rt,rs': return `${register(rd)}, ${register(rt)}, ${register(rs)}`
-		case 'rs,rt': return `${register(rs)}, ${register(rt)}`
-		case 'rd': return register(rd)
-		case 'rs': return register(rs)
-		case 'jr': return register(rs)
-		case 'jalr': return rd === 31 ? register(rs) : `${register(rd)}, ${register(rs)}`
-		case 'rd,rs': return `${register(rd)}, ${register(rs)}`
-		case 'none': return ''
-		// The break code occupies the 20 bits above the function field.
-		case 'break': return index >>> 6 ? `${index >>> 6}` : ''
-		case 'rt,rs,imm': return `${register(rt)}, ${register(rs)}, ${imm}`
-		case 'rt,rs,uimm': return `${register(rt)}, ${register(rs)}, ${hexImmediate(uimm)}`
-		case 'rt,uimm': return `${register(rt)}, ${hexImmediate(uimm)}`
-		case 'rt,offset(rs)': return `${register(rt)}, ${imm}(${register(rs)})`
-		case 'ft,offset(rs)': return `${fpRegister(ft)}, ${imm}(${register(rs)})`
-		case 'rs,rt,branch': return `${register(rs)}, ${register(rt)}, ${branchTarget(address, imm)}`
-		case 'rs,branch': return `${register(rs)}, ${branchTarget(address, imm)}`
-		case 'branch': return branchTarget(address, imm)
-		case 'jump': return jumpTarget(address, index)
-		case 'rt,cp0': return `${register(rt)}, $${rd}`
-		case 'rt,fs': return `${register(rt)}, ${fpRegister(fs)}`
-		case 'fd,fs,ft': return `${fpRegister(fd)}, ${fpRegister(fs)}, ${fpRegister(ft)}`
-		case 'fd,fs': return `${fpRegister(fd)}, ${fpRegister(fs)}`
-		case 'fs,ft': return `${fpRegister(fs)}, ${fpRegister(ft)}`
-	}
+	return decoded.operands.map((each) => operand(each, address)).join(', ')
 }
 
 /**

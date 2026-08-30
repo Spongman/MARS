@@ -111,20 +111,24 @@ describe('pseudo-instruction expansion', () => {
 		expect(words('li $t0, 5')).toEqual([0x24080005])
 	})
 
-	it('expands a large li to lui/ori', () => {
-		expect(words('li $t0, 0x12345678')).toEqual([0x3c081234, 0x35085678])
+	// The halves go through $at, and only the `ori` names the destination
+	// (`PseudoOps.txt:237`).
+	it('expands a large li to lui/ori through $at', () => {
+		expect(words('li $t0, 0x12345678')).toEqual([0x3c011234, 0x34285678])
 	})
 
+	// `addu RG1, $0, RG2` (`PseudoOps.txt:190`).
 	it('expands move to addu with $zero', () => {
-		expect(words('move $t0, $t1')).toEqual([0x01204021])
+		expect(words('move $t0, $t1')).toEqual([0x00094021])
 	})
 
 	it('expands nop to sll $zero, $zero, 0', () => {
 		expect(words('nop')).toEqual([0x00000000])
 	})
 
-	it('expands b to beq $zero, $zero', () => {
-		expect(words('here: b here')).toEqual([0x1000ffff])
+	// `bgez $0, LAB` (`PseudoOps.txt:195`).
+	it('expands b to bgez $zero', () => {
+		expect(words('here: b here')).toEqual([0x0401ffff])
 	})
 
 	it('expands blt to slt/bne through $at', () => {
@@ -133,8 +137,8 @@ describe('pseudo-instruction expansion', () => {
 
 	it('expands la to lui/ori over the label address', () => {
 		const [high, low] = words('.data\nvalue: .word 7\n.text\nla $t0, value\n')
-		expect(high).toBe(0x3c081001)
-		expect(low).toBe(0x35080000)
+		expect(high).toBe(0x3c011001)
+		expect(low).toBe(0x34280000)
 	})
 })
 
@@ -145,15 +149,14 @@ describe('label operands in loads and stores', () => {
 	 */
 	it('loads through $at instead of dropping the upper half of the address', () => {
 		const source = '.data\n.space 0x1000\nvalue: .word 7\n.text\nlw $t0, value\n'
-		const [high, low, load] = words(source)
+		const [high, load] = words(source)
 		expect(high).toBe(0x3c011001)
-		expect(low).toBe(0x34211000)
-		expect(load).toBe(0x8c280000)
+		expect(load).toBe(0x8c281000)
 	})
 
 	it('routes floating-point loads and stores through $at too', () => {
-		expect(words('.data\n.space 0x1000\nvalue: .float 1.0\n.text\nl.s $f0, value\n')).toHaveLength(3)
-		expect(words('.data\n.space 0x1000\nvalue: .float 1.0\n.text\ns.s $f0, value\n')).toHaveLength(3)
+		expect(words('.data\n.space 0x1000\nvalue: .float 1.0\n.text\nl.s $f0, value\n')).toHaveLength(2)
+		expect(words('.data\n.space 0x1000\nvalue: .float 1.0\n.text\ns.s $f0, value\n')).toHaveLength(2)
 	})
 
 	it('leaves an explicit offset(base) operand as one instruction', () => {

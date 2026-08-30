@@ -1,65 +1,21 @@
 /**
  * Machine-word decoding.
  *
- * This is the only place that knows the MIPS32 field layout.  The simulator
- * executes what `decode` returns, and the disassembler formats it, so a word
- * means the same thing whether it was assembled, loaded, or written by the
- * running program.
+ * The selection is the isa table's: `findByBinary` resolves a word to the same
+ * form the assembler encoded it from, longest mask first, so encode and decode
+ * cannot drift apart and a reserved encoding (opcode 1 with an `rt` no form
+ * claims) decodes to nothing rather than to a neighbouring branch.  This module
+ * adds only what execution and formatting need on top: the MIPS32 field layout,
+ * and each operand read out of its own field.
  */
 
-/** rd, rs, rt */
-const R_ARITHMETIC: Record<number, string> = {
-	0x20: 'ADD', 0x21: 'ADDU', 0x22: 'SUB', 0x23: 'SUBU',
-	0x24: 'AND', 0x25: 'OR', 0x26: 'XOR', 0x27: 'NOR',
-	0x2a: 'SLT', 0x2b: 'SLTU',
-}
+import { type BasicInstruction, basicForms, findByBinary, type IsaField, type IsaOperandKind } from './isa'
 
-/** rd, rt, shamt */
-const R_SHIFT: Record<number, string> = { 0x00: 'SLL', 0x02: 'SRL', 0x03: 'SRA' }
-
-/** rd, rt, rs */
-const R_VARIABLE_SHIFT: Record<number, string> = { 0x04: 'SLLV', 0x06: 'SRLV', 0x07: 'SRAV' }
-
-/** rs, rt */
-const R_MULTIPLY: Record<number, string> = { 0x18: 'MULT', 0x19: 'MULTU', 0x1a: 'DIV', 0x1b: 'DIVU' }
-
-/** rt, rs, sign-extended immediate */
-const I_ARITHMETIC: Record<number, string> = { 0x08: 'ADDI', 0x09: 'ADDIU', 0x0a: 'SLTI', 0x0b: 'SLTIU' }
-
-/** rt, rs, zero-extended immediate */
-const I_LOGICAL: Record<number, string> = { 0x0c: 'ANDI', 0x0d: 'ORI', 0x0e: 'XORI' }
-
-/** rt, offset(rs) */
-const I_MEMORY: Record<number, string> = {
-	0x20: 'LB', 0x21: 'LH', 0x23: 'LW', 0x24: 'LBU', 0x25: 'LHU',
-	0x28: 'SB', 0x29: 'SH', 0x2b: 'SW',
-	// Unaligned transfers, and the atomic pair THRAX treats as lw/sw.
-	0x22: 'LWL', 0x26: 'LWR', 0x2a: 'SWL', 0x2e: 'SWR',
-	0x30: 'LL', 0x38: 'SC',
-}
-
-/** ft, offset(rs) */
-const I_FP_MEMORY: Record<number, string> = { 0x31: 'LWC1', 0x35: 'LDC1', 0x39: 'SWC1', 0x3d: 'SDC1' }
-
-/** CP1 format field. */
-const FP_FORMATS: Record<number, string> = { 16: 'S', 17: 'D', 20: 'W' }
-
-/** fd, fs, ft */
-const FP_ARITHMETIC: Record<number, string> = { 0x00: 'ADD', 0x01: 'SUB', 0x02: 'MUL', 0x03: 'DIV' }
-
-/** fd, fs */
-const FP_UNARY: Record<number, string> = { 0x04: 'SQRT', 0x05: 'ABS', 0x06: 'MOV', 0x07: 'NEG' }
-
-/** fd, fs, with the destination format named by the mnemonic */
-const FP_CONVERT: Record<number, string> = {
-	0x0c: 'ROUND.W', 0x0d: 'TRUNC.W', 0x0e: 'CEIL.W', 0x0f: 'FLOOR.W',
-	0x20: 'CVT.S', 0x21: 'CVT.D', 0x24: 'CVT.W',
-}
-
-/** fs, ft */
-const FP_COMPARE: Record<number, string> = { 0x32: 'C.EQ', 0x3c: 'C.LT', 0x3e: 'C.LE' }
-
-/** How a decoded instruction's operands are laid out, for formatting. */
+/**
+ * How a decoded instruction's operands are laid out, for formatting.  Derived
+ * from the form's operand kinds and their field positions, except for the three
+ * mnemonics whose shape names the instruction (`jr`, `jalr`, `break`).
+ */
 export type OperandShape =
 	| 'rd,rs,rt'
 	| 'rd,rt,shamt'
@@ -70,22 +26,37 @@ export type OperandShape =
 	| 'jr'
 	| 'jalr'
 	| 'rd,rs'
+	| 'rd,rs,cc'
 	| 'none'
 	| 'rt,rs,imm'
 	| 'rt,rs,uimm'
 	| 'rt,uimm'
+	| 'rs,imm'
 	| 'rt,offset(rs)'
 	| 'ft,offset(rs)'
 	| 'rs,rt,branch'
 	| 'rs,branch'
 	| 'branch'
+	| 'cc,branch'
 	| 'jump'
 	| 'break'
 	| 'rt,cp0'
 	| 'rt,fs'
 	| 'fd,fs,ft'
+	| 'fd,fs,rt'
+	| 'fd,fs,cc'
 	| 'fd,fs'
 	| 'fs,ft'
+	| 'cc,fs,ft'
+
+/** One operand read out of the word, in the order the source spells it. */
+export interface DecodedOperand {
+	kind: IsaOperandKind
+	/** The field's value, sign-extended where the kind is signed. */
+	value: number
+	/** A `mem` operand's base register; its offset is `value`. */
+	base?: number
+}
 
 export interface Decoded {
 	/** Canonical mnemonic in the assembler's spelling, such as `ADD` or `C.LT.S`. */
@@ -99,6 +70,8 @@ export interface Decoded {
 	ft: number
 	fs: number
 	fd: number
+	/** FP condition code, 0-7; zero for the forms that name none. */
+	cc: number
 	/** Sign-extended 16-bit immediate. */
 	imm: number
 	/** Zero-extended 16-bit immediate. */
@@ -106,100 +79,131 @@ export interface Decoded {
 	/** 26-bit jump index; also the 20-bit `break` code, shifted up by six. */
 	index: number
 	word: number
+	/** The isa form this word matched. */
+	form: BasicInstruction
+	/** Its operands, in source order. */
+	operands: readonly DecodedOperand[]
 }
 
-/** Coprocessor 0: register moves and the exception return. */
-function decodeCop0(fields: Decoded): Decoded | null {
-	if (fields.word === 0x42000018) return { ...fields, op: 'ERET', shape: 'none' }
-	if (fields.rs === 0) return { ...fields, op: 'MFC0', shape: 'rt,cp0' }
-	if (fields.rs === 4) return { ...fields, op: 'MTC0', shape: 'rt,cp0' }
-	return null
+/** Kinds whose field is signed. */
+const SIGNED_KINDS: ReadonlySet<IsaOperandKind> = new Set<IsaOperandKind>(['imm16s', 'label'])
+
+/** The name one operand contributes to the shape. */
+type OperandSlot = string
+
+/** Where a general-purpose operand's field puts it. */
+const GPR_SLOTS: Record<number, OperandSlot> = { 21: 'rs', 16: 'rt', 11: 'rd' }
+
+/** Where a CP1 operand's field puts it: `ft` and `fs` and `fd` low bits first. */
+const FPR_SLOTS: Record<number, OperandSlot> = { 16: 'ft', 11: 'fs', 6: 'fd' }
+
+/** Shapes that name the instruction rather than its fields, because consumers key on them. */
+const SHAPE_BY_MNEMONIC: Record<string, OperandShape> = { jr: 'jr', jalr: 'jalr', break: 'break' }
+
+function fieldValue(word: number, field: IsaField): number {
+	return ((word >>> field.shift) & ((1 << field.width) - 1)) >>> 0
 }
 
-/** Coprocessor 1: register moves, conditional branches, and the FPU operations. */
-function decodeCop1(fields: Decoded): Decoded | null {
-	const { rs, rt, word } = fields
-	if (rs === 0) return { ...fields, op: 'MFC1', shape: 'rt,fs', fs: fields.rd }
-	if (rs === 4) return { ...fields, op: 'MTC1', shape: 'rt,fs', fs: fields.rd }
-	if (rs === 8) return { ...fields, op: rt & 1 ? 'BC1T' : 'BC1F', shape: 'branch' }
-
-	const format = FP_FORMATS[rs]
-	if (!format) return null
-
-	// A CP1 operation names ft, fs, and fd from low bits to high.
-	const operands = { ...fields, ft: rt, fs: fields.rd, fd: fields.shamt }
-	const func = word & 0x3f
-	if (FP_ARITHMETIC[func]) return { ...operands, op: `${FP_ARITHMETIC[func]}.${format}`, shape: 'fd,fs,ft' }
-	if (FP_UNARY[func]) return { ...operands, op: `${FP_UNARY[func]}.${format}`, shape: 'fd,fs' }
-	if (FP_CONVERT[func]) return { ...operands, op: `${FP_CONVERT[func]}.${format}`, shape: 'fd,fs' }
-	if (FP_COMPARE[func]) return { ...operands, op: `${FP_COMPARE[func]}.${format}`, shape: 'fs,ft' }
-	return null
+function signExtend(value: number, width: number): number {
+	const sign = 1 << (width - 1)
+	return value & sign ? value - (1 << width) : value
 }
 
-function decodeSpecial(fields: Decoded): Decoded | null {
-	const func = fields.word & 0x3f
-	const shape = (op: string, shape: OperandShape): Decoded => ({ ...fields, op, shape })
-
-	if (func === 0x0c) return shape('SYSCALL', 'none')
-	if (func === 0x0d) return shape('BREAK', 'break')
-	if (R_ARITHMETIC[func]) return shape(R_ARITHMETIC[func], 'rd,rs,rt')
-	if (R_SHIFT[func] !== undefined) return shape(R_SHIFT[func], 'rd,rt,shamt')
-	if (R_VARIABLE_SHIFT[func]) return shape(R_VARIABLE_SHIFT[func], 'rd,rt,rs')
-	if (R_MULTIPLY[func]) return shape(R_MULTIPLY[func], 'rs,rt')
-	if (func === 0x10) return shape('MFHI', 'rd')
-	if (func === 0x12) return shape('MFLO', 'rd')
-	if (func === 0x11) return shape('MTHI', 'rs')
-	if (func === 0x13) return shape('MTLO', 'rs')
-	if (func === 0x08) return shape('JR', 'jr')
-	if (func === 0x09) return shape('JALR', 'jalr')
-	// Conditional move on an FP condition code: rt bit 0 selects true or false.
-	if (func === 0x01) return shape(fields.rt & 1 ? 'MOVT' : 'MOVF', 'rd,rs')
-	return null
+/** Each operand of `form`, read from `word`; a `mem` operand spends two fields. */
+function readOperands(word: number, form: BasicInstruction): DecodedOperand[] {
+	const operands: DecodedOperand[] = []
+	let next = 0
+	for (const kind of form.operands) {
+		const field = form.fields[next++]
+		if (kind === 'mem') {
+			const base = form.fields[next++]
+			operands.push({ kind, value: signExtend(fieldValue(word, field), field.width), base: fieldValue(word, base) })
+			continue
+		}
+		const raw = fieldValue(word, field)
+		operands.push({ kind, value: SIGNED_KINDS.has(kind) ? signExtend(raw, field.width) : raw })
+	}
+	return operands
 }
+
+/** The slot one operand occupies, or null for a kind no basic form uses. */
+function operandSlot(kind: IsaOperandKind, field: IsaField): OperandSlot | null {
+	switch (kind) {
+		case 'gpr': return GPR_SLOTS[field.shift] ?? null
+		case 'fpr':
+		case 'fpr-even': return FPR_SLOTS[field.shift] ?? null
+		case 'cp0': return 'cp0'
+		case 'imm5': return 'shamt'
+		case 'imm3': return 'cc'
+		case 'imm16s': return 'imm'
+		case 'imm16u': return 'uimm'
+		case 'imm20': return 'code'
+		case 'label': return 'branch'
+		case 'target26': return 'jump'
+		case 'mem': return 'offset(rs)'
+		default: return null
+	}
+}
+
+/** The form's operand slots joined, which is what the formatter switches on. */
+function deriveShape(form: BasicInstruction): OperandShape {
+	const named = SHAPE_BY_MNEMONIC[form.mnemonic]
+	if (named) return named
+	const slots: OperandSlot[] = []
+	let next = 0
+	for (const kind of form.operands) {
+		const slot = operandSlot(kind, form.fields[next])
+		next += kind === 'mem' ? 2 : 1
+		if (slot === null) return 'none'
+		slots.push(slot)
+	}
+	return (slots.length === 0 ? 'none' : slots.join(',')) as OperandShape
+}
+
+/** One shape per form, derived once. */
+const SHAPES = new WeakMap<BasicInstruction, OperandShape>()
+
+function shapeOf(form: BasicInstruction): OperandShape {
+	const cached = SHAPES.get(form)
+	if (cached !== undefined) return cached
+	const shape = deriveShape(form)
+	SHAPES.set(form, shape)
+	return shape
+}
+
+/**
+ * `nop` and `sll $zero,$zero,0` are one word, so the shift is what runs; the
+ * disassembler is where the word is spelled `nop` again.
+ */
+const SHIFT_FORM = basicForms('sll')[0]
 
 /** Decodes one machine word, or returns null when it encodes no known instruction. */
 export function decode(word: number): Decoded | null {
 	const value = word >>> 0
+	const matched = findByBinary(value)
+	if (!matched) return null
+	const form = matched.mnemonic === 'nop' ? SHIFT_FORM : matched
+
+	const operands = readOperands(value, form)
+	const condition = operands.find((operand) => operand.kind === 'imm3')
 	const immediate = value & 0xffff
-	const fields: Decoded = {
-		op: '',
-		shape: 'none',
+	return {
+		op: form.mnemonic.toUpperCase(),
+		shape: shapeOf(form),
 		rs: (value >>> 21) & 0x1f,
 		rt: (value >>> 16) & 0x1f,
 		rd: (value >>> 11) & 0x1f,
 		shamt: (value >>> 6) & 0x1f,
-		ft: 0,
-		fs: 0,
-		fd: 0,
+		// A CP1 operation names ft, fs, and fd from low bits to high.
+		ft: (value >>> 16) & 0x1f,
+		fs: (value >>> 11) & 0x1f,
+		fd: (value >>> 6) & 0x1f,
+		cc: condition?.value ?? 0,
 		imm: immediate & 0x8000 ? immediate - 0x10000 : immediate,
 		uimm: immediate,
 		index: value & 0x3ffffff,
 		word: value,
+		form,
+		operands,
 	}
-
-	const opcode = value >>> 26
-	const shape = (op: string, layout: OperandShape): Decoded => ({ ...fields, op, shape: layout })
-
-	if (opcode === 0) return decodeSpecial(fields)
-	if (opcode === 0x10) return decodeCop0(fields)
-	if (opcode === 0x11) return decodeCop1(fields)
-	if (I_FP_MEMORY[opcode]) return { ...fields, op: I_FP_MEMORY[opcode], shape: 'ft,offset(rs)', ft: fields.rt }
-	if (opcode === 0x1c && (value & 0x3f) === 0x02) return shape('MUL', 'rd,rs,rt')
-
-	if (I_ARITHMETIC[opcode]) return shape(I_ARITHMETIC[opcode], 'rt,rs,imm')
-	if (I_LOGICAL[opcode]) return shape(I_LOGICAL[opcode], 'rt,rs,uimm')
-	if (opcode === 0x0f) return shape('LUI', 'rt,uimm')
-	if (I_MEMORY[opcode]) return shape(I_MEMORY[opcode], 'rt,offset(rs)')
-
-	if (opcode === 0x04) return shape('BEQ', 'rs,rt,branch')
-	if (opcode === 0x05) return shape('BNE', 'rs,rt,branch')
-	if (opcode === 0x06) return shape('BLEZ', 'rs,branch')
-	if (opcode === 0x07) return shape('BGTZ', 'rs,branch')
-	// Opcode 1 splits on rt: 0 is bltz, 1 is bgez.
-	if (opcode === 0x01) return shape(fields.rt === 1 ? 'BGEZ' : 'BLTZ', 'rs,branch')
-
-	if (opcode === 0x02) return shape('J', 'jump')
-	if (opcode === 0x03) return shape('JAL', 'jump')
-
-	return null
 }

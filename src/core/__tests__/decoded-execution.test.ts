@@ -4,7 +4,9 @@ import { build, run, withExit, words } from './helpers'
 
 /**
  * The simulator fetches and decodes words from memory, so anything that puts a
- * valid word at an executable address runs, no matter where it came from.
+ * valid word at an executable address runs, no matter where it came from —
+ * once `selfModifyingCode` allows it, which is what gates both the text write
+ * and the out-of-text fetch in MARS (`Memory.java:377-388`, `:939-944`).
  */
 describe('execution reads machine code', () => {
 	it('runs a word the program wrote over its own text', async () => {
@@ -19,7 +21,9 @@ sw $t2, 0($t1)
 patch:
 nop
 `)
-		const simulator = await run(source)
+		const simulator = build(source)
+		simulator.selfModifyingCode = true
+		await simulator.run()
 		expect(simulator.registers.$t0).toBe(42)
 	})
 
@@ -34,15 +38,18 @@ la $t1, generated
 jalr $t1
 addi $t0, $t0, 1
 `)
-		const simulator = await run(source)
+		const simulator = build(source)
+		simulator.selfModifyingCode = true
+		await simulator.run()
 		expect(simulator.registers.$t0).toBe(6)
 	})
 
 	it('drops the cached decoding when the word changes', () => {
 		const simulator = build(withExit('nop'))
 		expect(simulator.decodeAt(0x00400000)?.op).toBe('SLL')
-		// Overwrite the nop with `addiu $t0, $zero, 7`.
-		simulator.writeMemory(0x00400000, words('addiu $t0, $zero, 7')[0], 4)
+		// Overwrite the nop with `addiu $t0, $zero, 7`.  A deliberate edit takes
+		// the raw path, as MARS's own text editing does (`Memory.java:891-910`).
+		simulator.writeMemoryRaw(0x00400000, words('addiu $t0, $zero, 7')[0], 4)
 		expect(simulator.decodeAt(0x00400000)?.op).toBe('ADDIU')
 	})
 
@@ -54,7 +61,7 @@ addi $t0, $t0, 1
 
 	it('reports a word that decodes to no instruction', async () => {
 		const simulator = build(withExit('nop'))
-		simulator.writeMemory(0x00400000, 0xffffffff, 4)
+		simulator.writeMemoryRaw(0x00400000, 0xffffffff, 4)
 		await simulator.run()
 		expect(simulator.console).toContain('Undecodable instruction')
 		expect(simulator.halted).toBe(true)
