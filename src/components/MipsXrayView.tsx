@@ -2,12 +2,13 @@ import React from 'react'
 import { disassemble } from '../core/disassembler'
 import { formatWord, memoryKey } from '../core/format'
 import type { MemoryView } from '../core/types'
-import { DatapathAnimation, staticWires, TRACK_WIDTH, xrayLabels } from '../tools/xray/animation'
+import { DatapathAnimation, staticWires, xrayLabels } from '../tools/xray/animation'
+import { arrowCorners, DOT_RADIUS, ROW_PIN, TRACK_WIDTH } from '../tools/xray/drawing'
+import type { XrayHead } from '../tools/xray/drawing'
 import { geometryOf } from '../tools/xray/geometry'
-import type { XrayArrow } from '../tools/xray/geometry'
 import { XRAY_DATAPATHS } from '../tools/xray/datapaths'
 import type { XrayDiagram } from '../tools/xray/datapaths'
-import { XRAY_DRAWINGS } from '../tools/xray/blocks'
+import { svgPathOf, XRAY_DRAWINGS } from '../tools/xray/blocks'
 import type { XrayBlock } from '../tools/xray/blocks'
 import { isOneOf, useStoredState } from '../hooks/useStoredState'
 import './MipsXrayView.css'
@@ -27,57 +28,14 @@ const DIAGRAMS: { key: XrayDiagram; label: string }[] = [
 /** Pixels of wire drawn per frame, so a whole datapath lights up in a second or so. */
 const SPEEDS = [1, 2, 4, 8, 16]
 
-/** A junction dot, wide enough to cover the wires meeting under it. */
-const JUNCTION_RADIUS = 3
-
-/** The head THRAX draws where a value arrives at a block: length, then width. */
-const ARROW = { length: 9, width: 8 }
-
-/** The head as a triangle, its point on the block and its back along the wire. */
-function arrowPoints({ x, y, dx, dy }: Omit<XrayArrow, 'index'>): string {
-	const [backX, backY] = [x - dx * ARROW.length, y - dy * ARROW.length]
-	const [sideX, sideY] = [(dy * ARROW.width) / 2, (dx * ARROW.width) / 2]
-	return `${x},${y} ${backX + sideX},${backY + sideY} ${backX - sideX},${backY - sideY}`
-}
+const arrowPoints = (head: XrayHead): string =>
+	arrowCorners(head).map(([x, y]) => `${x},${y}`).join(' ')
 
 /** The inverting bubble on a gate input. */
 const BUBBLE_RADIUS = 3.5
 
 /** Only the main drawing carries the instruction annotations THRAX writes. */
 const ANNOTATED: XrayDiagram = 'datapath'
-
-/** The notched arrow MIPS diagrams use for an adder or the ALU. */
-function aluPath({ x, y, width: w, height: h }: XrayBlock): string {
-	return [
-		`M ${x} ${y}`,
-		`L ${x + w} ${y + h * 0.3}`,
-		`L ${x + w} ${y + h * 0.7}`,
-		`L ${x} ${y + h}`,
-		`L ${x} ${y + h * 0.62}`,
-		`L ${x + w * 0.3} ${y + h * 0.5}`,
-		`L ${x} ${y + h * 0.38}`,
-		'Z',
-	].join(' ')
-}
-
-/** A flat back and a half-round nose, pointing right or down. */
-function andPath({ x, y, width: w, height: h, facing }: XrayBlock): string {
-	if (facing === 'down') {
-		return `M ${x} ${y} H ${x + w} V ${y + h - w / 2} A ${w / 2} ${w / 2} 0 0 1 ${x} ${y + h - w / 2} Z`
-	}
-	return `M ${x} ${y} H ${x + w - h / 2} A ${h / 2} ${h / 2} 0 0 1 ${x + w - h / 2} ${y + h} H ${x} Z`
-}
-
-/** A dished back and a pointed nose. */
-function orPath({ x, y, width: w, height: h }: XrayBlock): string {
-	return [
-		`M ${x} ${y}`,
-		`Q ${x + w * 0.4} ${y + h / 2} ${x} ${y + h}`,
-		`Q ${x + w * 0.7} ${y + h * 0.92} ${x + w} ${y + h / 2}`,
-		`Q ${x + w * 0.7} ${y + h * 0.08} ${x} ${y}`,
-		'Z',
-	].join(' ')
-}
 
 function Block({ block }: { block: XrayBlock }) {
 	const { shape, x, y, width, height, label, labelSize = 10, rows } = block
@@ -121,7 +79,7 @@ function Block({ block }: { block: XrayBlock }) {
 		case 'alu':
 			return (
 				<g>
-					<path className="xray-block" d={aluPath(block)} />
+					<path className="xray-block" d={svgPathOf(block)} />
 					{text}
 					{block.note && (
 						<text className="xray-block-note" x={x + width * 0.5} y={y + height * 0.32} fontSize={7}>
@@ -131,12 +89,12 @@ function Block({ block }: { block: XrayBlock }) {
 				</g>
 			)
 		case 'and':
-			return <path className="xray-gate" d={andPath(block)} />
+			return <path className="xray-gate" d={svgPathOf(block)} />
 		case 'or':
 		case 'nor':
 			return (
 				<g>
-					<path className="xray-gate" d={orPath(block)} />
+					<path className="xray-gate" d={svgPathOf(block)} />
 					{/*
 						An inverting bubble sits on the gate's own edge, which is
 						dished: at a fraction `at` of the way down, the curve has
@@ -163,8 +121,8 @@ function Block({ block }: { block: XrayBlock }) {
 						return (
 							<g key={row + index}>
 								{index > 0 && <line className="xray-block-rule" x1={x} y1={top} x2={x + width} y2={top} />}
-								<text className="xray-block-caption" x={x + 5} y={top + rowHeight * 0.35} fontSize={6}>CTRL</text>
-								<text className="xray-block-caption" x={x + 5} y={top + rowHeight * 0.75} fontSize={6}>DATA</text>
+								<text className="xray-block-caption" x={x + 5} y={top + rowHeight * ROW_PIN.ctrl} fontSize={6}>CTRL</text>
+								<text className="xray-block-caption" x={x + 5} y={top + rowHeight * ROW_PIN.data} fontSize={6}>DATA</text>
 								<text className="xray-block-label" x={x + width * 0.6} y={top + rowHeight / 2} fontSize={block.labelSize ?? 12}>
 									{row}
 								</text>
@@ -252,7 +210,7 @@ function MipsXrayView({ memory, pc }: Props) {
 					{/* A dot marks where wires tap off one another, over the joins. */}
 					<g className="xray-junctions">
 						{junctions.map((junction, index) => (
-							<circle key={index} cx={junction.x} cy={junction.y} r={JUNCTION_RADIUS} />
+							<circle key={index} cx={junction.x} cy={junction.y} r={DOT_RADIUS} />
 						))}
 					</g>
 
@@ -273,7 +231,7 @@ function MipsXrayView({ memory, pc }: Props) {
 					{/* Its own class: a fill rule would beat the colour set here. */}
 					<g className="xray-junctions-live">
 						{animation.litJunctions().map((junction, index) => (
-							<circle key={index} cx={junction.x} cy={junction.y} r={JUNCTION_RADIUS} fill={junction.color} />
+							<circle key={index} cx={junction.x} cy={junction.y} r={DOT_RADIUS} fill={junction.color} />
 						))}
 					</g>
 

@@ -21,48 +21,14 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { XRAY_DATAPATHS } from '../src/tools/xray/datapaths'
 import type { XrayDiagram } from '../src/tools/xray/datapaths'
-import { XRAY_DRAWINGS } from '../src/tools/xray/blocks'
-import type { XrayBlock } from '../src/tools/xray/blocks'
+import { outlineOf, XRAY_DRAWINGS } from '../src/tools/xray/blocks'
 import { geometryOf } from '../src/tools/xray/geometry'
-
-/** A line meant to sit at `place` is recorded at the brush's corner, behind it. */
-const brush = (place: number) => place - 1.5
+import { arrowCorners, brush, DOT_RADIUS, TRACK_WIDTH } from '../src/tools/xray/drawing'
 
 /** Close enough that the difference is rounding, not an edit. */
 const MOVED = 0.75
 
 const round = (value: number) => Math.round(value * 10) / 10
-
-const outline = (block: XrayBlock): [number, number][] => {
-	const { shape, x, y, width: w, height: h, facing } = block
-	if (shape === 'alu') {
-		return [[x, y], [x + w, y + h * 0.3], [x + w, y + h * 0.7], [x, y + h],
-			[x, y + h * 0.62], [x + w * 0.3, y + h * 0.5], [x, y + h * 0.38]]
-	}
-	const radius = facing === 'down' ? w / 2 : h / 2
-	const centre: [number, number] = facing === 'down' ? [x + w / 2, y + h - radius] : [x + w - radius, y + h / 2]
-	const start = facing === 'down' ? 0 : -Math.PI / 2
-	const nose = Array.from({ length: 17 }, (_, step) => {
-		const angle = start + (step / 16) * Math.PI
-		return [centre[0] + radius * Math.cos(angle), centre[1] + radius * Math.sin(angle)] as [number, number]
-	})
-	if (shape === 'and') return facing === 'down' ? [[x, y], [x + w, y], ...nose] : [[x, y], ...nose, [x, y + h]]
-	// An or gate is dished at the back and pointed at the nose; sampling the
-	// same curves the view draws keeps the box around it the box it came from.
-	const bow = (from: [number, number], control: [number, number], to: [number, number]) =>
-		Array.from({ length: 12 }, (_, step) => {
-			const at = (step + 1) / 12
-			const rest = 1 - at
-			return [
-				rest * rest * from[0] + 2 * rest * at * control[0] + at * at * to[0],
-				rest * rest * from[1] + 2 * rest * at * control[1] + at * at * to[1],
-			] as [number, number]
-		})
-	return [[x, y],
-		...bow([x, y], [x + w * 0.4, y + h / 2], [x, y + h]),
-		...bow([x, y + h], [x + w * 0.7, y + h * 0.92], [x + w, y + h / 2]),
-		...bow([x + w, y + h / 2], [x + w * 0.7, y + h * 0.08], [x, y])]
-}
 
 function exportSvg(diagram: XrayDiagram): string {
 	const { width, height } = XRAY_DATAPATHS[diagram]
@@ -93,7 +59,7 @@ function exportSvg(diagram: XrayDiagram): string {
 			const fill = shape === 'panel' ? ' fill="none"' : ''
 			parts.push(`<rect ${common}${fill} x="${round(x)}" y="${round(y)}" width="${round(w)}" height="${round(h)}"/>`)
 		} else {
-			const points = outline(block).map(([px, py]) => `${round(px)},${round(py)}`).join(' ')
+			const points = outlineOf(block).map(([px, py]) => `${round(px)},${round(py)}`).join(' ')
 			parts.push(`<polygon ${common} points="${points}"/>`)
 		}
 		const label = (block.label ?? []).join(' ')
@@ -102,7 +68,7 @@ function exportSvg(diagram: XrayDiagram): string {
 	parts.push('</g>')
 
 	// One line per drawn wire, named for the vertex it came from.
-	parts.push('<g id="wires" inkscape:groupmode="layer" inkscape:label="wires" stroke="#9aa0ad" stroke-width="2.5">')
+	parts.push(`<g id="wires" inkscape:groupmode="layer" inkscape:label="wires" stroke="#9aa0ad" stroke-width="${TRACK_WIDTH}">`)
 	for (const wire of wires) {
 		const [x1, y1, x2, y2] = wire.horizontal
 			? [wire.from, wire.axis, wire.to, wire.axis]
@@ -127,12 +93,11 @@ function exportSvg(diagram: XrayDiagram): string {
 	// Worked out from the wires, so an edit here is not read back.
 	parts.push('<g id="derived" inkscape:groupmode="layer" inkscape:label="derived (not read back)" pointer-events="none">')
 	for (const junction of junctions) {
-		parts.push(`<circle fill="#ffffff" cx="${round(junction.x)}" cy="${round(junction.y)}" r="3"/>`)
+		parts.push(`<circle fill="#ffffff" cx="${round(junction.x)}" cy="${round(junction.y)}" r="${DOT_RADIUS}"/>`)
 	}
 	for (const arrow of arrows) {
-		const [backX, backY] = [arrow.x - arrow.dx * 9, arrow.y - arrow.dy * 9]
-		const [sideX, sideY] = [arrow.dy * 4, arrow.dx * 4]
-		parts.push(`<polygon fill="#9aa0ad" points="${round(arrow.x)},${round(arrow.y)} ${round(backX + sideX)},${round(backY + sideY)} ${round(backX - sideX)},${round(backY - sideY)}"/>`)
+		const points = arrowCorners(arrow).map(([x, y]) => `${round(x)},${round(y)}`).join(' ')
+		parts.push(`<polygon fill="#9aa0ad" points="${points}"/>`)
 	}
 	parts.push('</g>')
 

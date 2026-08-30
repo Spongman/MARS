@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { XRAY_DATAPATHS } from '../datapaths'
 import type { XrayDiagram } from '../datapaths'
-import { insideShape, XRAY_DRAWINGS } from '../blocks'
+import { insideShape, outlineOf, svgPathOf, XRAY_DRAWINGS } from '../blocks'
 import type { XrayBlock } from '../blocks'
+import { DOT_RADIUS } from '../drawing'
 import { geometryOf, onPanel } from '../geometry'
 import type { XrayWire } from '../geometry'
 
@@ -19,7 +20,7 @@ import type { XrayWire } from '../geometry'
 const DIAGRAMS: XrayDiagram[] = ['datapath', 'control', 'aluControl', 'register']
 
 /** Radius of the drawn junction dot, from the view. */
-const JUNCTION_RADIUS = 3
+const JUNCTION_RADIUS = DOT_RADIUS
 
 /** Half a wire's width: two things this close are touching once drawn. */
 const TOUCH = 2
@@ -241,5 +242,44 @@ describe('datapath drawing rules', () => {
 			}
 		}
 		expect([...new Set(coincident)].sort()).toEqual(COINCIDENT)
+	})
+})
+
+/** The corner each command of a path leaves the pen at. */
+const cornersOf = (path: string): [number, number][] =>
+	[...path.matchAll(/[MLQA][^A-Z]*/g)].map(([command]) => {
+		const numbers = command.slice(1).trim().split(/\s+/).map(Number)
+		return [numbers[numbers.length - 2], numbers[numbers.length - 1]] as [number, number]
+	})
+
+const near = (one: [number, number], other: [number, number]) =>
+	Math.abs(one[0] - other[0]) < 1e-9 && Math.abs(one[1] - other[1]) < 1e-9
+
+/**
+ * The drawing the reader sees and the outline a wire is stopped against have to
+ * be the same shape, or a wire ends in a gap the picture does not show.  Both
+ * come out of the one definition in `blocks.ts`, and these say so: every corner
+ * the path names is a point of the sampled outline.
+ */
+describe('block shapes', () => {
+	const shaped = DIAGRAMS
+		.flatMap((diagram) => geometryOf(diagram).blocks)
+		.filter((block) => ['alu', 'and', 'or', 'nor'].includes(block.shape))
+
+	it('draws every path corner on the outline it is hit-tested against', () => {
+		expect(shaped.length).toBeGreaterThan(0)
+		for (const block of shaped) {
+			const points = outlineOf(block)
+			const stray = cornersOf(svgPathOf(block))
+				.filter((corner) => !points.some((point) => near(point, corner)))
+			expect(stray, `${block.shape} at ${block.x},${block.y}`).toEqual([])
+		}
+	})
+
+	/** The ALU is all straight runs, so the two are the same list of vertices. */
+	it('gives the ALU one set of vertices', () => {
+		const alu = shaped.filter((block) => block.shape === 'alu')
+		expect(alu.length).toBeGreaterThan(0)
+		for (const block of alu) expect(cornersOf(svgPathOf(block))).toEqual(outlineOf(block))
 	})
 })

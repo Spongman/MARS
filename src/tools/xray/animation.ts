@@ -21,9 +21,6 @@ import type { XrayGeometry } from './geometry'
 /** THRAX's default wire colour, for a vertex whose diagram names none. */
 const DEFAULT_COLOR = '#009900'
 
-/** Width of the tracks THRAX fills, in diagram pixels. */
-export const TRACK_WIDTH = 2.5
-
 /** How bright a wire has to be to read against the workspace's dark ground. */
 const MINIMUM_LUMINANCE = 0.5
 

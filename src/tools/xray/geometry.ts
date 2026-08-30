@@ -30,12 +30,10 @@ import type { XrayDiagram } from './datapaths'
 import { insideShape, XRAY_DRAWINGS, XRAY_REROUTES } from './blocks'
 import type { XrayBlock } from './blocks'
 import { XRAY_DOTS } from './junctions'
+import { BRUSH_OFFSET, DOT_RADIUS } from './drawing'
 
 /** What THRAX points a run at when it goes nowhere else, rather than a vertex. */
 const TERMINAL = 0
-
-/** THRAX anchored its three-pixel brush at the coordinate, not around it. */
-const BRUSH_OFFSET = 1.5
 
 /**
  * How far a wire may be stretched to reach a joint.  Measured across all four
@@ -68,9 +66,6 @@ const EDGE_MARGIN = 8
 
 /** How far from a dot a wire may run and still be one of the wires it joins. */
 const DOT_REACH = 4
-
-/** The junction dot as the view draws it, which an arrow stops short of. */
-const DOT_RADIUS = 3
 
 /** How far a block may be slid to balance it, so nothing lurches across the page. */
 const BALANCE_LIMIT = 28

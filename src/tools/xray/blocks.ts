@@ -10,6 +10,7 @@
  */
 
 import type { XrayDiagram } from './datapaths'
+import { brush, ROW_PIN } from './drawing'
 
 export type XrayShape =
 	/** A plain box: the register file, the memories, the program counter. */
@@ -154,7 +155,7 @@ const ROW_HEIGHT = REGISTER_FILE.height / REGISTER_NAMES.length
 
 /** The two pins on a row: control above, data below. */
 export const registerPin = (row: number, pin: 'ctrl' | 'data') =>
-	REGISTER_FILE.y + ROW_HEIGHT * (row + (pin === 'ctrl' ? 0.35 : 0.75))
+	REGISTER_FILE.y + ROW_HEIGHT * (row + ROW_PIN[pin])
 
 /**
  * A multiplexer sized to the lines arriving at it, so they land on even
@@ -243,47 +244,140 @@ const register: XrayDrawing = {
 
 export const XRAY_DRAWINGS: Record<XrayDiagram, XrayDrawing> = { datapath, control, aluControl, register }
 
-/** Points along a quadratic curve, for shapes drawn with one. */
-function curve(from: [number, number], control: [number, number], to: [number, number]): [number, number][] {
-	const steps = 12
-	return Array.from({ length: steps }, (_, step) => {
-		const at = (step + 1) / steps
-		const rest = 1 - at
-		return [
-			rest * rest * from[0] + 2 * rest * at * control[0] + at * at * to[0],
-			rest * rest * from[1] + 2 * rest * at * control[1] + at * at * to[1],
-		] as [number, number]
-	})
+type Point = [number, number]
+
+/**
+ * One run of a block's outline, from wherever the last one ended.
+ *
+ * A nose carries the straight run into it as well as the half circle, because
+ * the two share a corner and the circle is the one that names it: the outline
+ * takes that corner off the circle, as it always has, while the path lines to
+ * the corner arithmetic gives.  The two agree to the last bit.
+ */
+type XrayRun =
+	/** Straight to a corner. */
+	| { to: Point }
+	/** A quadratic curve, dished or rounded. */
+	| { control: Point; to: Point }
+	/** A gate's nose: straight to `from`, then a half circle round to `to`. */
+	| { centre: Point; radius: number; start: number; from: Point; to: Point }
+
+/** Where a block's outline starts, and the runs that close it. */
+interface XrayOutline {
+	from: Point
+	runs: XrayRun[]
 }
 
-/** The outline of a block, as the view draws it. */
-function outline({ shape, x, y, width: w, height: h, facing }: XrayBlock): [number, number][] {
+/** How many points a curved run is sampled at. */
+const SAMPLES = 12
+
+/**
+ * The one description of each block's outline, which the view draws as a path,
+ * the geometry hit-tests against, and the SVG export writes out.
+ */
+function shapeOf({ shape, x, y, width: w, height: h, facing }: XrayBlock): XrayOutline {
 	switch (shape) {
+		// The notched arrow MIPS diagrams use for an adder or the ALU.
 		case 'alu':
-			return [[x, y], [x + w, y + h * 0.3], [x + w, y + h * 0.7], [x, y + h],
-				[x, y + h * 0.62], [x + w * 0.3, y + h * 0.5], [x, y + h * 0.38]]
-		case 'and': {
-			// A flat back and a half-round nose, pointing right or down.
-			const radius = facing === 'down' ? w / 2 : h / 2
-			const centre: [number, number] = facing === 'down' ? [x + w / 2, y + h - radius] : [x + w - radius, y + h / 2]
-			// Round the nose the way it is drawn: rightward from the top, or
-			// downward from the right.
-			const start = facing === 'down' ? 0 : -Math.PI / 2
-			const nose = Array.from({ length: 13 }, (_, step) => {
-				const angle = start + (step / 12) * Math.PI
-				return [centre[0] + radius * Math.cos(angle), centre[1] + radius * Math.sin(angle)] as [number, number]
-			})
-			return facing === 'down' ? [[x, y], [x + w, y], ...nose] : [[x, y], ...nose, [x, y + h]]
-		}
+			return {
+				from: [x, y],
+				runs: [
+					{ to: [x + w, y + h * 0.3] },
+					{ to: [x + w, y + h * 0.7] },
+					{ to: [x, y + h] },
+					{ to: [x, y + h * 0.62] },
+					{ to: [x + w * 0.3, y + h * 0.5] },
+					{ to: [x, y + h * 0.38] },
+				],
+			}
+		// A flat back and a half-round nose, pointing right or down.  The nose is
+		// rounded the way it is drawn: rightward from the top, or downward from
+		// the right.
+		case 'and':
+			if (facing === 'down') {
+				const radius = w / 2
+				return {
+					from: [x, y],
+					runs: [
+						{ to: [x + w, y] },
+						{ centre: [x + w / 2, y + h - radius], radius, start: 0, from: [x + w, y + h - radius], to: [x, y + h - radius] },
+					],
+				}
+			} else {
+				const radius = h / 2
+				return {
+					from: [x, y],
+					runs: [
+						{ centre: [x + w - radius, y + h / 2], radius, start: -Math.PI / 2, from: [x + w - radius, y], to: [x + w - radius, y + h] },
+						{ to: [x, y + h] },
+					],
+				}
+			}
+		// A dished back and a pointed nose.
 		case 'or':
 		case 'nor':
-			return [[x, y],
-				...curve([x, y], [x + w * 0.4, y + h / 2], [x, y + h]),
-				...curve([x, y + h], [x + w * 0.7, y + h * 0.92], [x + w, y + h / 2]),
-				...curve([x + w, y + h / 2], [x + w * 0.7, y + h * 0.08], [x, y])]
+			return {
+				from: [x, y],
+				runs: [
+					{ control: [x + w * 0.4, y + h / 2], to: [x, y + h] },
+					{ control: [x + w * 0.7, y + h * 0.92], to: [x + w, y + h / 2] },
+					{ control: [x + w * 0.7, y + h * 0.08], to: [x, y] },
+				],
+			}
 		default:
-			return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+			return { from: [x, y], runs: [{ to: [x + w, y] }, { to: [x + w, y + h] }, { to: [x, y + h] }] }
 	}
+}
+
+/** The points one run passes through, the corner it starts at excepted. */
+function pointsOf(run: XrayRun, from: Point): Point[] {
+	if ('centre' in run) {
+		return Array.from({ length: SAMPLES + 1 }, (_, step) => {
+			const angle = run.start + (step / SAMPLES) * Math.PI
+			return [run.centre[0] + run.radius * Math.cos(angle), run.centre[1] + run.radius * Math.sin(angle)] as Point
+		})
+	}
+	if ('control' in run) {
+		return Array.from({ length: SAMPLES }, (_, step) => {
+			const at = (step + 1) / SAMPLES
+			const rest = 1 - at
+			return [
+				rest * rest * from[0] + 2 * rest * at * run.control[0] + at * at * run.to[0],
+				rest * rest * from[1] + 2 * rest * at * run.control[1] + at * at * run.to[1],
+			] as Point
+		})
+	}
+	return [run.to]
+}
+
+/** The outline of a block, as the view draws it, sampled into straight runs. */
+export function outlineOf(block: XrayBlock): Point[] {
+	const { from, runs } = shapeOf(block)
+	const points: Point[] = [from]
+	let at = from
+	for (const run of runs) {
+		points.push(...pointsOf(run, at))
+		at = run.to
+	}
+	return points
+}
+
+/** The same outline as SVG path data, with the curves kept as curves. */
+export function svgPathOf(block: XrayBlock): string {
+	const { from, runs } = shapeOf(block)
+	const parts = [`M ${from[0]} ${from[1]}`]
+	for (const run of runs) {
+		if ('centre' in run) {
+			parts.push(`L ${run.from[0]} ${run.from[1]}`)
+			parts.push(`A ${run.radius} ${run.radius} 0 0 1 ${run.to[0]} ${run.to[1]}`)
+		} else if ('control' in run) {
+			parts.push(`Q ${run.control[0]} ${run.control[1]} ${run.to[0]} ${run.to[1]}`)
+		} else {
+			parts.push(`L ${run.to[0]} ${run.to[1]}`)
+		}
+	}
+	parts.push('Z')
+	return parts.join(' ')
 }
 
 /**
@@ -306,7 +400,7 @@ export function insideShape(block: XrayBlock, x: number, y: number): boolean {
 		const near = Math.min(Math.max(y, by + radius), by + h - radius)
 		return (x - bx - radius) ** 2 + (y - near) ** 2 <= radius * radius
 	}
-	const points = outline(block)
+	const points = outlineOf(block)
 	let inside = false
 	for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
 		const [ix, iy] = points[i]
@@ -336,9 +430,6 @@ export interface XrayReroute {
 	 */
 	step?: Record<number, { at: number; axis: number }>
 }
-
-/** A line meant to sit at `place` is recorded at the brush's corner, behind it. */
-const brush = (place: number) => place - 1.5
 
 /**
  * The address line comes down the middle of its multiplexer.  The register
