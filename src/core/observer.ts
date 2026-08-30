@@ -29,6 +29,16 @@ export interface DevicePort {
 	read(address: number): number
 	/** Queues a word, applied at the start of the next instruction. */
 	write(address: number, value: number): void
+	/**
+	 * Asks for an external interrupt, taken in place of the next instruction.
+	 * `cause` is shifted two places into the cause register, so a device names
+	 * itself by the pending bit it lands on rather than by an exception code.
+	 *
+	 * Refused while the machine is already in a handler, since the interrupt
+	 * would overwrite the return address the handler has yet to use.  A refused
+	 * request is dropped rather than held.
+	 */
+	interrupt(cause: number): boolean
 }
 
 /** What a tool needs to know about the machine, as opposed to the run on it. */

@@ -19,7 +19,11 @@ export const KEYPAD_ROW_OFFSET = 0x12
 export const COUNTER_OFFSET = 0x13
 export const KEYPAD_OUT_OFFSET = 0x14
 
-/** Cause-register bits the two interrupts raise. */
+/**
+ * Cause codes the two interrupts raise.  Shifted two places into the cause
+ * register they land on bits 10 and 11, past the bits the keyboard and display
+ * claim, so a handler can tell all four apart.
+ */
 export const TIMER_INTERRUPT = 0x00000100
 export const KEYPAD_INTERRUPT = 0x00000200
 
@@ -64,8 +68,11 @@ export class DigitalLabSim implements ExecutionObserver {
 	private port: DevicePort | null = null
 	private base = 0xffff0000
 	private state: DigitalLabState = freshState()
-	/** Raised on the machine at the next opportunity, as MARS's device does. */
-	pendingInterrupt: number | null = null
+	/**
+	 * The last cause the machine accepted, which is what a panel shows.  The
+	 * interrupt itself is the machine's, not the tool's: this is a record of it.
+	 */
+	lastInterrupt: number | null = null
 
 	onConfigure(machine: MachineConfig & { memoryMapBase?: number }) {
 		this.port = machine.device ?? null
@@ -74,7 +81,7 @@ export class DigitalLabSim implements ExecutionObserver {
 
 	onReset() {
 		this.state = freshState()
-		this.pendingInterrupt = null
+		this.lastInterrupt = null
 	}
 
 	/** The program writing one of the device's bytes is how it drives the device. */
@@ -97,8 +104,7 @@ export class DigitalLabSim implements ExecutionObserver {
 			return
 		}
 		this.state.counterRemaining = COUNTER_PERIOD
-		this.state.timerInterrupts += 1
-		this.pendingInterrupt = TIMER_INTERRUPT
+		this.raise(TIMER_INTERRUPT, 'timerInterrupts')
 	}
 
 	/**
@@ -121,10 +127,18 @@ export class DigitalLabSim implements ExecutionObserver {
 	pressKey(key: number | null) {
 		this.state.pressedKey = key
 		this.publishKeypad()
-		if (key !== null && this.state.keypadInterruptEnabled) {
-			this.state.keypadInterrupts += 1
-			this.pendingInterrupt = KEYPAD_INTERRUPT
-		}
+		if (key !== null && this.state.keypadInterruptEnabled) this.raise(KEYPAD_INTERRUPT, 'keypadInterrupts')
+	}
+
+	/**
+	 * Hands a cause to the machine, which takes it in place of its next
+	 * instruction.  Counted only when it is accepted: one the machine refused
+	 * because it is already in a handler never reaches the program.
+	 */
+	private raise(cause: number, counter: 'timerInterrupts' | 'keypadInterrupts') {
+		if (this.port?.interrupt(cause) !== true) return
+		this.state[counter] += 1
+		this.lastInterrupt = cause
 	}
 
 	private publishKeypad() {

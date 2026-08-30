@@ -171,8 +171,14 @@ function blankDisplay(columns: number, rows: number): string {
 	return Array.from({ length: rows }, () => ' '.repeat(columns)).join('\n')
 }
 
-/** Cause codes the two devices raise, as `Exceptions` numbers them. */
-const EXCEPTION_EXTERNAL_INTERRUPT = 0
+/**
+ * Cause codes the memory-mapped devices raise.  An external interrupt has one
+ * exception code, zero, so a code here carries the device's pending bit instead:
+ * shifted two places into the cause register it lands on bit 8 for the receiver
+ * and bit 9 for the transmitter, which is how a handler tells them apart.
+ */
+const EXCEPTION_RECEIVER_INTERRUPT = 0x40
+const EXCEPTION_TRANSMITTER_INTERRUPT = 0x80
 
 /** The four memory-mapped device registers, from the configuration's base. */
 const RECEIVER_CONTROL_OFFSET = 0
@@ -288,6 +294,12 @@ export class MipsSimulator {
 	 * instruction so each lands as its own recorded event.
 	 */
 	private deviceWrites: Array<{ address: number, value: number }>
+	/**
+	 * A cause code a device asked to interrupt with, taken in place of the next
+	 * instruction.  One at a time, as the machine has one cause register: a
+	 * second request before the first is taken replaces it.
+	 */
+	private deviceInterrupt: number | null
 	/** The entry being filled in, or null when nothing is being recorded. */
 	private entry: HistoryEntry | null
 	/** Every entry's effects, in columns the entries index into. */
@@ -343,6 +355,7 @@ export class MipsSimulator {
 		this.displayColumns = DISPLAY_COLUMNS
 		this.displayRows = DISPLAY_ROWS
 		this.deviceWrites = []
+		this.deviceInterrupt = null
 		this.entry = null
 		this.nextEntryId = 1
 		this.cursor = 0
@@ -570,7 +583,6 @@ export class MipsSimulator {
 		if (this.pendingInput) return
 		this.drainDeviceWrites()
 		if (this.transmitterBusy > 0) this.transmitterBusy -= 1
-		this.raiseDeviceInterrupt()
 		// Ground the log already covers is replayed rather than re-run, which is
 		// what lets a syscall that read the console be passed a second time in
 		// silence.  It can also bring the machine back out of `halted`.
@@ -595,6 +607,16 @@ export class MipsSimulator {
 
 		this.nextPc = (this.pc + 4) | 0
 		try {
+			// An interrupt is taken in place of the instruction, not after it: EPC
+			// names the instruction, so returning from the handler runs it.  Inside
+			// the entry, so the handler's cause and epc roll back with everything
+			// else, and inside the catch, since dispatch abandons the instruction.
+			const interrupt = this.pendingInterruptCause()
+			if (interrupt !== null) {
+				this.deviceInterrupt = null
+				this.signalException(interrupt)
+			}
+
 			if (fetchFault !== null) this.raiseAddressError(fetchFault, this.pc, false)
 
 			if (decoded === null) {
@@ -677,17 +699,25 @@ export class MipsSimulator {
 	}
 
 	/**
-	 * Enters the handler when a device has something to report and interrupts
-	 * are enabled for it.  A character waiting to be read is the receiver's
-	 * event; the transmitter having finished is its own.
+	 * The cause code an interrupt is owed before the instruction in hand runs, or
+	 * null when nothing is pending.  A character waiting to be read is the
+	 * receiver's event, the transmitter having finished is its own, and a tool
+	 * holding the device port raises whatever its own device reports.
 	 */
-	private raiseDeviceInterrupt() {
-		const receiver = this.receiverInterruptEnabled && this.keyboardDisplay.queuedInput.length > 0
-		const transmitter = this.transmitterInterruptEnabled && this.transmitterBusy === 0
-		if (!receiver && !transmitter) return
-		// Masked off in the status register means the program is not listening.
-		if ((this.cp0Registers[12] & 1) === 0) return
-		this.signalException(EXCEPTION_EXTERNAL_INTERRUPT)
+	private pendingInterruptCause(): number | null {
+		// Masked off in the status register means the program is not listening,
+		// and being in a handler already means it cannot be told.
+		const status = this.cp0Registers[12]
+		if ((status & 1) === 0 || (status & CP0_STATUS_EXL) !== 0) return null
+
+		if (this.deviceInterrupt !== null) return this.deviceInterrupt
+		if (this.receiverInterruptEnabled && this.keyboardDisplay.queuedInput.length > 0) {
+			return EXCEPTION_RECEIVER_INTERRUPT
+		}
+		if (this.transmitterInterruptEnabled && this.transmitterBusy === 0) {
+			return EXCEPTION_TRANSMITTER_INTERRUPT
+		}
+		return null
 	}
 
 	/**
@@ -699,6 +729,13 @@ export class MipsSimulator {
 		return {
 			read: (address) => this.readWordRaw(address),
 			write: (address, value) => { this.deviceWrites.push({ address: address >>> 0, value }) },
+			interrupt: (cause) => {
+				// Already in a handler: taking another would lose the return
+				// address the first one still needs.
+				if ((this.cp0Registers[12] & CP0_STATUS_EXL) !== 0) return false
+				this.deviceInterrupt = cause
+				return true
+			},
 		}
 	}
 
@@ -1956,7 +1993,11 @@ export class MipsSimulator {
 	signalException(code: number, badVirtualAddress?: number): void {
 		// EPC is the faulting instruction: MARS stores PC-4 because it has
 		// already incremented.
-		this.writeCp0(13, (this.cp0Registers[13] & ~0x7c) | ((code & 0x1f) << 2))
+		// The code is shifted two places into the exception-code field.  A device
+		// code is wide enough to reach past that field into the pending bits, so
+		// it is not masked to five bits, and those bits are cleared here rather
+		// than left standing from the interrupt before.
+		this.writeCp0(13, ((this.cp0Registers[13] & 0xfffffc83) | (code << 2)) >>> 0)
 		this.writeCp0(14, this.pc)
 		this.writeCp0(12, this.cp0Registers[12] | CP0_STATUS_EXL)
 		if (badVirtualAddress !== undefined) this.writeCp0(8, badVirtualAddress >>> 0)
