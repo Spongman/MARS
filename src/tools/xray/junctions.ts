@@ -1,7 +1,7 @@
 /**
- * Where THRAX painted a junction dot.
+ * Where a junction dot is painted.
  *
- * Its vertex graph records which wire carries a value next, not whether two
+ * The vertex graph records which wire carries a value next, not whether two
  * wires that cross are joined; the drawing answered that, with a dot at a real
  * junction and a bare crossing everywhere else.  These are those dots, read
  * back out of the images by `scripts/detect-xray-junctions.py` and given in the

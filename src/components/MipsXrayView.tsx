@@ -34,7 +34,7 @@ const arrowPoints = (head: XrayHead): string =>
 /** The inverting bubble on a gate input. */
 const BUBBLE_RADIUS = 3.5
 
-/** Only the main drawing carries the instruction annotations THRAX writes. */
+/** Only the main drawing carries the instruction annotations. */
 const ANNOTATED: XrayDiagram = 'datapath'
 
 function Block({ block }: { block: XrayBlock }) {
@@ -202,7 +202,7 @@ function MipsXrayView({ memory, pc }: Props) {
 						))}
 					</g>
 
-					{/* A head where a value arrives at a block, as THRAX marks it. */}
+					{/* A head where a value arrives at a block. */}
 					<g className="xray-arrows">
 						{arrows.map((arrow, index) => <polygon key={index} points={arrowPoints(arrow)} />)}
 					</g>

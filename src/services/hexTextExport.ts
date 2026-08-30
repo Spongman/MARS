@@ -1,5 +1,5 @@
 /**
- * THRAX-compatible hexadecimal text export for a contiguous sequence of words.
+ * HexText export for a contiguous sequence of words.
  * Each word is represented by eight lowercase hexadecimal characters and a newline.
  */
 function formatHexTextWord(word: number): string {
@@ -11,7 +11,7 @@ function formatHexTextWord(word: number): string {
 }
 
 /**
- * Produces the original THRAX HexText format: one 32-bit text-segment word per line.
+ * Produces the HexText format: one 32-bit text-segment word per line.
  */
 function createHexText(machineCode: readonly number[]): string {
 	return machineCode.map(formatHexTextWord).join('\n') + (machineCode.length > 0 ? '\n' : '')
@@ -25,7 +25,7 @@ function createHexTextBlob(machineCode: readonly number[]): Blob {
 }
 
 /**
- * Starts a browser download of assembled text-segment words in THRAX HexText format.
+ * Starts a browser download of assembled text-segment words in HexText format.
  */
 export function downloadHexText(machineCode: readonly number[], filename = 'thrax-text.hex'): void {
 	const url = URL.createObjectURL(createHexTextBlob(machineCode))

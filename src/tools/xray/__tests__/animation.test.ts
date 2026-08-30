@@ -7,7 +7,7 @@ import { XRAY_DATAPATHS } from '../datapaths'
 
 const encode = (source: string) => words(source)[0]
 
-describe('instruction colouring (MipsXray.java:610)', () => {
+describe('instruction colouring', () => {
 	it('picks a colour set from the opcode', () => {
 		expect(xrayColorKey(encode('add $t0, $t1, $t2'), 'datapath')).toBe('rtype')
 		expect(xrayColorKey(encode('here: j here'), 'datapath')).toBe('jtype')
@@ -146,7 +146,7 @@ describe('instruction annotations', () => {
 
 describe('drawing on a dark ground', () => {
 	it('lifts a colour too dark to see, and leaves a bright one alone', () => {
-		// THRAX wires several signals in navy, which disappears against #1e1e1e.
+		// Several signals are wired in navy, which disappears against #1e1e1e.
 		expect(nightColor('#0000ff')).not.toBe('#0000ff')
 		expect(nightColor('#ffff00')).toBe('#ffff00')
 		expect(nightColor('#00ff00')).toBe('#00ff00')
@@ -209,8 +209,8 @@ describe('drawn units', () => {
 describe('wire geometry', () => {
 	const DIAGRAMS = ['datapath', 'control', 'aluControl', 'register'] as const
 
-	it('puts a wire where THRAX painted it, not where the number says', () => {
-		// THRAX anchored a three-pixel brush at the coordinate, so the centre line
+	it('puts a wire where it was painted, not where the number says', () => {
+		// A three-pixel brush was anchored at the coordinate, so the centre line
 		// of the wire it drew is a pixel and a half past it.  A wire joined to a
 		// near-parallel neighbour is brought onto its line as well, which is the
 		// only thing allowed to move it further.
@@ -252,7 +252,7 @@ describe('wire geometry', () => {
 				expect(wire.axis).toBeGreaterThanOrEqual(0)
 				expect(wire.axis).toBeLessThanOrEqual(across)
 				expect(Math.min(wire.from, wire.to)).toBeGreaterThanOrEqual(0)
-				// THRAX's own brush overhung the right and bottom edges by its width.
+				// The brush overhung the right and bottom edges by its width.
 				expect(Math.max(wire.from, wire.to)).toBeLessThanOrEqual(along + 3)
 			}
 		}

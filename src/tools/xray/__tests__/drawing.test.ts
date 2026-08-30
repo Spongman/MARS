@@ -10,7 +10,7 @@ import type { XrayWire } from '../geometry'
 /**
  * The rules the redrawn datapaths have to obey.
  *
- * THRAX's vertex graph was never meant to be a drawing on its own: the wiring
+ * The vertex graph was never meant to be a drawing on its own: the wiring
  * the reader saw was painted into a bitmap underneath it, so the numbers are a
  * few pixels loose everywhere and nobody noticed.  Drawing them directly puts
  * every one of those slips on show, so `geometry.ts` tidies them up, and these
@@ -32,7 +32,7 @@ const TOUCH = 2
  */
 const PAST_END = 4
 
-/** The junctions THRAX fans more than three traces out of. */
+/** The junctions with more than three traces fanned out of them. */
 const FANNED_OUT: string[] = [
 	'datapath 4 arms at 330.5,400.5',
 	'datapath 4 arms at 498.5,120.5',
@@ -44,10 +44,10 @@ const FANNED_OUT: string[] = [
 	'register 4 arms at 617.5,152.5',
 ]
 
-/** Pairs THRAX draws a pixel apart, which are different signals. */
+/** Pairs drawn a pixel apart, which are different signals. */
 const COINCIDENT: string[] = []
 
-/** THRAX starts and ends its edge wires a few pixels inside the drawing. */
+/** Edge wires start and end a few pixels inside the drawing. */
 const EDGE_MARGIN = 8
 
 /** How far two pieces of one run may be carried past the joint between them. */
@@ -131,12 +131,12 @@ describe('datapath drawing rules', () => {
 	 * counts is arms, not wires: a wire running through a junction leaves by
 	 * both sides of it and so contributes two.
 	 *
-	 * THRAX fans several of its own signals out from a single dot, which is what
-	 * the list below is.  Splitting each into a chain of tees would read better
-	 * but is a change to its drawing, so they are pinned here instead: the check
-	 * is that no new one appears.
+	 * Several signals fan out from a single dot, which is what the list below is.
+	 * Splitting each into a chain of tees would read better but changes the
+	 * drawing, so they are pinned here instead: the check is that no new one
+	 * appears.
 	 */
-	it('runs no more than three traces into a junction THRAX did not fan out', () => {
+	it('runs no more than three traces into a junction that is not fanned out', () => {
 		const crowded: string[] = []
 		for (const diagram of DIAGRAMS) {
 			const { junctions, byIndex } = geometryOf(diagram)

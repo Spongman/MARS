@@ -1,9 +1,10 @@
 /**
  * Where a drawing's wires actually sit.
  *
- * Two things have to be undone before THRAX's numbers can be drawn as lines.
+ * Two things have to be undone before the vertex numbers can be drawn as
+ * lines.
  *
- * The first is registration.  THRAX painted a wire by filling a three-pixel
+ * The first is registration.  A wire was painted by filling a three-pixel
  * block at every step with the coordinate at the block's top-left corner, so a
  * wire's centre line runs one and a half pixels below and to the right of the
  * numbers in `datapaths.ts`.  The blocks in `blocks.ts` were measured off the
@@ -20,9 +21,9 @@
  * they meet.
  *
  * Which of those meetings is a junction and which is two wires crossing over is
- * a question the graph cannot answer at all.  THRAX answered it in the drawing,
- * by painting a dot at one and nothing at the other, so the dots are read back
- * out of its images into `junctions.ts` and that is what gets drawn.
+ * a question the graph cannot answer at all.  The drawings answered it, with a
+ * dot at one and nothing at the other, so those dots are read back out of the
+ * images into `junctions.ts` and that is what gets drawn.
  */
 
 import { XRAY_DATAPATHS } from './datapaths'
@@ -32,7 +33,7 @@ import type { XrayBlock } from './blocks'
 import { XRAY_DOTS } from './junctions'
 import { BRUSH_OFFSET, DOT_RADIUS } from './drawing'
 
-/** What THRAX points a run at when it goes nowhere else, rather than a vertex. */
+/** What a run points at when it goes nowhere else, rather than a vertex. */
 const TERMINAL = 0
 
 /**
@@ -61,7 +62,7 @@ const BLOCK_REACH = 26
 /** How far a wire left hanging may be carried to reach the next thing in line. */
 const LOOSE_REACH = 48
 
-/** THRAX starts and ends its edge wires a few pixels inside the drawing. */
+/** Edge wires start and end a few pixels inside the drawing. */
 const EDGE_MARGIN = 8
 
 /** How far from a dot a wire may run and still be one of the wires it joins. */
@@ -118,7 +119,7 @@ export interface XrayJunction {
 export interface XrayGeometry {
 	wires: XrayWire[]
 	junctions: XrayJunction[]
-	/** Where a value arrives at a block, as THRAX's own drawings mark it. */
+	/** Where a value arrives at a block, as the drawings mark it. */
 	arrows: XrayArrow[]
 	byIndex: Map<number, XrayWire[]>
 	/** The blocks as drawn, which is not quite where they were measured. */
@@ -279,8 +280,8 @@ export function attachmentsOf(wires: XrayWire[], blocks: XrayBlock[]): XrayAttac
 }
 
 /**
- * The gates a drawing repeats as a row or a column.  THRAX measured each one on
- * its own, so they come in a few pixels apart; balancing them separately then
+ * The gates a drawing repeats as a row or a column.  Each was measured on its
+ * own, so they come in a few pixels apart; balancing them separately then
  * pulls them further apart, since each follows its own wires.  Held as a group
  * they keep the one line the drawing reads as.
  */
@@ -307,7 +308,7 @@ function rowsOf(blocks: XrayBlock[]): { members: XrayBlock[]; origin: 'x' | 'y';
  * sits half way between whatever the wires run to on either side.
  *
  * A wire entering one face and leaving the opposite one pins nothing: the block
- * can slide along it, and THRAX's own placement is wherever the draughtsman left
+ * can slide along it, and its drawn placement is wherever the draughtsman left
  * it.  Wires arriving at the two faces across that axis do pin it, since they
  * have to keep landing on the block, so those set the range it may move in.
  */
@@ -373,8 +374,8 @@ function balance(wires: XrayWire[], blocks: XrayBlock[], attachments: XrayAttach
 
 		// A fit the block cannot stretch far enough to make is not worth half
 		// making: it would leave the wires no better spread and the block the
-		// wrong size.  THRAX spreads the decoder's outputs nearly corner to
-		// corner, which no even sixths of its face can match.
+		// wrong size.  The decoder's outputs spread nearly corner to corner,
+		// which no even sixths of its face can match.
 		const wanted = covariance / spread
 		const original = measured.get(block)?.[size] ?? block[size]
 		if (wanted < original * (1 - FIT_RANGE) || wanted > original * (1 + FIT_RANGE)) return false
@@ -591,7 +592,7 @@ function build(diagram: XrayDiagram): XrayGeometry {
 		// A vertex a reroute leaves undrawn has no wire to join anything to.
 		if (!wire) continue
 		for (const target of vertex.targets) {
-			// THRAX ends a run by pointing it at zero, which is not vertex zero.
+			// A run ends by pointing at zero, which is not vertex zero.
 			if (target === TERMINAL) continue
 			const next = arrivesAt.get(target)
 			if (!next || next.index === wire.index || !drawable.has(target)) continue
@@ -728,7 +729,7 @@ function build(diagram: XrayDiagram): XrayGeometry {
 		}
 	}
 
-	// THRAX's own dots decide which meetings are junctions.  A dot is placed at
+	// The painted dots decide which meetings are junctions.  A dot is placed at
 	// the crossing of the wires it belongs to, so it sits exactly where they
 	// cross rather than a pixel or two off it.
 	const junctions: XrayJunction[] = []
@@ -787,7 +788,7 @@ function build(diagram: XrayDiagram): XrayGeometry {
 		junctions.push({ x: point[0], y: point[1], wires: joined.map((wire) => wire.index) })
 	}
 
-	// THRAX puts an arrow where a value arrives: at the block it runs into, and
+	// An arrow goes where a value arrives: at the block it runs into, and
 	// at the dot where it joins what carries it on.  A wire runs from where its
 	// value comes from to where it goes, so the arrow is on the `to` end, and it
 	// points the way the wire travels.

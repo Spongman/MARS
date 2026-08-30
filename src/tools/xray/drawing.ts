@@ -7,13 +7,13 @@
  * it in another, so the sizes live here rather than in each of them.
  */
 
-/** THRAX anchored its three-pixel brush at the coordinate, not around it. */
+/** The three-pixel brush is anchored at the coordinate, not around it. */
 export const BRUSH_OFFSET = 1.5
 
 /** A line meant to sit at `place` is recorded at the brush's corner, behind it. */
 export const brush = (place: number) => place - BRUSH_OFFSET
 
-/** Width of the tracks THRAX fills, in diagram pixels. */
+/** Width of a filled track, in diagram pixels. */
 export const TRACK_WIDTH = 2.5
 
 /**
@@ -22,7 +22,7 @@ export const TRACK_WIDTH = 2.5
  */
 export const DOT_RADIUS = 3
 
-/** The head THRAX draws where a value arrives at a block: length, then width. */
+/** The head drawn where a value arrives at a block: length, then width. */
 export const ARROW = { length: 9, width: 8 }
 
 /** The two pins on a register row, as fractions of its height. */

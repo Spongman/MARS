@@ -3,7 +3,7 @@ import { Lexer } from '../lexer'
 import { build, buildDelayed, output, run, runDelayed, withExit } from './helpers'
 
 /**
- * Behaviour checked against the original THRAX 4.5 sources rather than against
+ * Behaviour checked against the original MARS 4.5 sources rather than against
  * intuition.  Each case names the file that defines it, so a future change can
  * be argued against the same authority.
  */
@@ -66,7 +66,7 @@ describe('character literals (Tokenizer.java:preprocessCharacterLiteral)', () =>
 		expect((await run(withExit("li $t0, 'A'"))).registers.$t0).toBe(65)
 	})
 
-	it('decodes the escapes THRAX tabulates', async () => {
+	it('decodes the tabulated character escapes', async () => {
 		const simulator = await run(withExit("li $t0, '\\n'\nli $t1, '\\t'\nli $t2, '\\0'\nli $t3, '\\\\'\nli $t4, '\\''"))
 		expect(simulator.registers.$t0).toBe(10)
 		expect(simulator.registers.$t1).toBe(9)
@@ -87,8 +87,8 @@ describe('string escapes (Assembler.java:1210, octal explicitly not implemented)
 		expect(await output(withExit('.data\ns: .asciiz "a\\tb\\nc"\n.text\nla $a0, s\nli $v0, 4\nsyscall'))).toBe('a\tb\nc')
 	})
 
-	it('leaves an octal escape alone inside a string, as THRAX does', async () => {
-		// THRAX decodes \377 in a character literal but not in a string, where the
+	it('leaves an octal escape alone inside a string, as MARS does', async () => {
+		// MARS decodes ÿ in a character literal but not in a string, where the
 		// backslash is dropped and the digits stay.
 		expect(await output(withExit('.data\ns: .asciiz "\\377"\n.text\nla $a0, s\nli $v0, 4\nsyscall'))).toBe('377')
 	})

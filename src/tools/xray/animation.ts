@@ -1,6 +1,5 @@
 /**
- * MIPS X-Ray: the animated datapath, ported from `thrax/tools/MipsXray.java`
- * and `thrax/tools/UnitAnimation.java`.
+ * MIPS X-Ray: the animated datapath.
  *
  * One instruction's journey is a graph of wire segments over a drawing of the
  * datapath.  A segment grows a pixel at a time from `init` to `end` along one
@@ -8,8 +7,8 @@
  * colour of every wire is chosen by the format of the instruction, so a load
  * and a branch light the same drawing up differently.
  *
- * The vertex graph is THRAX's own, generated into `datapaths.ts`; the engine
- * here reproduces its stepping and propagation.  The drawing is redrawn rather
+ * The vertex graph is generated into `datapaths.ts`; the engine here does the
+ * stepping and propagation.  The drawing is redrawn rather
  * than photographed: see `blocks.ts`.
  */
 
@@ -18,7 +17,7 @@ import type { XrayColorKey, XrayDatapath, XrayDiagram, XrayVertex } from './data
 import { geometryOf } from './geometry'
 import type { XrayGeometry } from './geometry'
 
-/** THRAX's default wire colour, for a vertex whose diagram names none. */
+/** The default wire colour, for a vertex whose diagram names none. */
 const DEFAULT_COLOR = '#009900'
 
 /** How bright a wire has to be to read against the workspace's dark ground. */
@@ -28,8 +27,8 @@ const MINIMUM_LUMINANCE = 0.5
 const luminance = ([red, green, blue]: number[]) => 0.2126 * red + 0.7152 * green + 0.0722 * blue
 
 /**
- * THRAX chose its wire colours against white, so several of them are navies that
- * vanish here.  Mixing toward white lifts one until it reads while leaving its
+ * The wire colours were chosen against white, so several of them are navies
+ * that vanish here.  Mixing toward white lifts one until it reads while leaving its
  * hue alone, so the colour still codes for what it did.
  */
 export function nightColor(hex: string): string {
@@ -145,8 +144,8 @@ export class DatapathAnimation {
 	/** Moves every live wire on by one pixel, and starts whatever they reach. */
 	advance(steps = 1) {
 		for (let step = 0; step < steps; step++) {
-			// The list grows as targets start, and THRAX animates those in the same
-			// pass, so this walks the array rather than a copy of it.
+			// The list grows as targets start, and those animate in the same pass,
+			// so this walks the array rather than a copy of it.
 			for (let i = 0; i < this.tracks.length; i++) {
 				const track = this.tracks[i]
 				if (track.active) {
@@ -156,7 +155,7 @@ export class DatapathAnimation {
 				}
 				if (!track.active) {
 					for (const target of track.vertex.targets) {
-						// Pointing at zero is THRAX's way of pointing nowhere.
+						// Pointing at zero means pointing nowhere.
 						if (target === 0) continue
 						const vertex = this.datapath.vertices[target]
 						if (vertex) this.begin(vertex)
@@ -195,7 +194,7 @@ export class DatapathAnimation {
 	segments(): XraySegment[] {
 		const segments: XraySegment[] = []
 		for (const track of this.tracks) {
-			// THRAX draws no track for a label, only the wires that lead to it.
+			// A label has no track of its own, only the wires that lead to it.
 			if (track.vertex.isText) continue
 			const pieces = this.geometry.byIndex.get(track.vertex.index)
 			if (!pieces) continue
@@ -282,7 +281,7 @@ const TITLES: Record<XrayFormat, string> = {
 	immediate: 'IMMEDIATE TYPE INSTRUCTION',
 }
 
-/** The bit fields of each format, as THRAX lays them out along the bottom. */
+/** The bit fields of each format, laid out along the bottom. */
 const FIELDS: Record<XrayFormat, { x: number; name: string; from: number; to: number; color: string }[]> = {
 	register: [
 		{ x: 25, name: 'opcode', from: 0, to: 6, color: 'var(--xray-field-opcode)' },
@@ -330,9 +329,8 @@ function bits(word: number): string {
 const signed = (value: number) => (value & 0x8000 ? value - 0x10000 : value)
 
 /**
- * What the instruction reads as, drawn above the bit fields.  THRAX builds the
- * load and store forms out of the wrong bit ranges, so those two name the base
- * register and offset the instruction actually uses.
+ * What the instruction reads as, drawn above the bit fields.  The load and
+ * store forms name the base register and offset the instruction actually uses.
  */
 function description(word: number, format: XrayFormat, code: string): XrayLabel[] {
 	const at = (x: number, text: string): XrayLabel => ({ x, y: 500, text, color: 'var(--text-primary)', size: 15 })
@@ -372,8 +370,8 @@ function description(word: number, format: XrayFormat, code: string): XrayLabel[
 
 /**
  * Everything written over the drawing for one instruction: the format, its bit
- * fields, and what it reads as.  The click-through hint THRAX shows is left out,
- * since the diagrams are chosen from a list here rather than by clicking.
+ * fields, and what it reads as.  There is no click-through hint, since the
+ * diagrams are chosen from a list here rather than by clicking.
  */
 export function xrayLabels(word: number): XrayLabel[] {
 	const format = xrayFormat(word)

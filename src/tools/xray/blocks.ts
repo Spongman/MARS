@@ -1,11 +1,11 @@
 /**
  * The functional units of each X-Ray drawing.
  *
- * THRAX ships its datapaths as photographs of a diagram: gradient-filled ovals
+ * The source datapaths are photographs of a diagram: gradient-filled ovals
  * on a teal panel, with the wiring baked into the bitmap.  The wiring is
  * already described by the vertex graph in `datapaths.ts`, so all that is left
  * to redraw is the blocks the wires run between.  Geometry here was measured
- * off THRAX's own images, in the same pixel space the vertices use, so the two
+ * off those images, in the same pixel space the vertices use, so the two
  * still line up.
  */
 
@@ -15,7 +15,7 @@ import { brush, ROW_PIN } from './drawing'
 export type XrayShape =
 	/** A plain box: the register file, the memories, the program counter. */
 	| 'rect'
-	/** The units THRAX draws as ovals, such as the control unit. */
+	/** The units drawn as ovals, such as the control unit. */
 	| 'ellipse'
 	/** A multiplexer, drawn as a tall stadium. */
 	| 'pill'
@@ -55,7 +55,7 @@ export interface XrayText {
 	text: string
 	anchor?: 'start' | 'middle' | 'end'
 	size?: number
-	/** Set for the headings THRAX draws in bold. */
+	/** Set for the headings drawn in bold. */
 	strong?: boolean
 }
 
@@ -64,7 +64,7 @@ export interface XrayDrawing {
 	texts: XrayText[]
 	/**
 	 * Whether the drawing marks where a value arrives with an arrow.  Only the
-	 * main datapath does: THRAX draws the three logic diagrams as plain lines.
+	 * main datapath does: the three logic diagrams are plain lines.
 	 */
 	arrowheads?: boolean
 }
@@ -79,7 +79,7 @@ const CONTROL_SIGNAL_Y = [226, 257, 297, 336, 374, 395, 415, 438, 461]
 const datapath: XrayDrawing = {
 	blocks: [
 		{ shape: 'rect', x: 120, y: 353, width: 39, height: 41, label: ['PC'], labelSize: 12, fixed: true },
-		// Moved left of where THRAX drew it, to open up the lane the instruction
+		// Moved left of its drawn position, to open up the lane the instruction
 		// fields drop through.  It can go no further: the adder's feed off the
 		// program counter runs down at x = 193.
 		{ shape: 'rect', x: 202, y: 330, width: 87, height: 91, label: ['INSTRUCTION', 'MEMORY'], labelSize: 9, fixed: true },
@@ -134,8 +134,8 @@ const aluControl: XrayDrawing = {
 		{ x: 3, y: 163, text: 'bit 2', size: 18, strong: true },
 		{ x: 3, y: 267, text: 'bit 1', size: 18, strong: true },
 		{ x: 5, y: 352, text: 'bit 0', size: 18, strong: true },
-		// THRAX labels these inconsistently -- "Op 1" beside "op 2", "Op ALU1"
-		// beside "OpALU2" -- so they are spelled one way here.
+		// The drawings label these inconsistently -- "Op 1" beside "op 2", "Op
+		// ALU1" beside "OpALU2" -- so they are spelled one way here.
 		{ x: 744, y: 118, text: 'op 1', size: 18, strong: true },
 		{ x: 744, y: 228, text: 'op 2', size: 18, strong: true },
 		{ x: 746, y: 312, text: 'op 3', size: 18, strong: true },
@@ -189,7 +189,7 @@ const READ_PORTS = [
 
 /**
  * The lane between the two read multiplexers, which the second read address
- * runs along on its way to the lower one's select input.  THRAX drew it hard up
+ * runs along on its way to the lower one's select input.  It was drawn hard up
  * against the upper multiplexer; it belongs half way between the two.
  */
 const READ_PORT_GAP = (READ_PORTS[0].mux.y + READ_PORTS[0].mux.height + READ_PORTS[1].mux.y) / 2
@@ -412,8 +412,8 @@ export function insideShape(block: XrayBlock, x: number, y: number): boolean {
 }
 
 /**
- * Deliberate departures from THRAX's own routing, where it drew a wire the long
- * way round for no reason the diagram explains.
+ * Deliberate departures from the drawn routing, where a wire went the long way
+ * round for no reason the diagram explains.
  */
 export interface XrayReroute {
 	/** Vertices left undrawn, because the straightened route replaces them. */
@@ -424,9 +424,9 @@ export interface XrayReroute {
 	span?: Record<number, { from?: number; to?: number }>
 	/**
 	 * Vertices drawn with a step in them: where along the run it crosses over,
-	 * and the line it carries on down.  THRAX holds a wire as one straight
-	 * segment, so a route that has to change lane part way along is drawn as
-	 * three pieces of the one wire and lights up as one.
+	 * and the line it carries on down.  A wire is one straight segment, so a
+	 * route that has to change lane part way along is drawn as three pieces of
+	 * the one wire and lights up as one.
 	 */
 	step?: Record<number, { at: number; axis: number }>
 }
@@ -525,7 +525,7 @@ export const XRAY_REROUTES: Partial<Record<XrayDiagram, XrayReroute>> = {
 		// The multiplexer's feed changes lane half way along, to come in level
 		// with the input it drives.
 		step: { 17: { at: 739, axis: 105.8 } },
-		// Three wires THRAX draws over another: `*nodeIMrepeated` is `nodeIM`
+		// Three wires drawn over another: `*nodeIMrepeated` is `nodeIM`
 		// twice over, as its name says; `notUsed` is `*REGinput1` a pixel away,
 		// which nothing points at and so never lights; and the data memory's
 		// address arrives as two segments two pixels apart.
@@ -559,8 +559,8 @@ export const XRAY_REROUTES: Partial<Record<XrayDiagram, XrayReroute>> = {
 		},
 	},
 	control: {
-		// THRAX runs the second and third gates' outputs on down the board past
-		// the signal they drive, ending them in mid-air.  Each output stops at
+		// The second and third gates' outputs run on down the board past the
+		// signal they drive, ending in mid-air.  Each output stops at
 		// the signal it feeds; the wire that carried on is not drawn.
 		drop: [67, 73],
 		moveAxis: {},

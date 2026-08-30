@@ -1,11 +1,11 @@
 /**
- * Datapath drawings for the MIPS X-Ray, generated from the four XML files THRAX
- * ships beside `thrax/tools/MipsXray.java`.  Each vertex is one wire segment:
+ * Datapath drawings for the MIPS X-Ray, generated from the four X-Ray datapath
+ * XML files.  Each vertex is one wire segment:
  * it grows from `init` to `end` along one axis at `otherAxis`, and when it
  * arrives its `targets` start growing in turn.  Coordinates are pixels in the
  * space the drawing in `blocks.ts` is measured in.
  *
- * Generated, not written.  Edit the THRAX XML and regenerate instead.
+ * Generated, not written.  Edit the source XML and regenerate instead.
  */
 
 /** How a wire is coloured, chosen by the instruction being animated. */
@@ -21,7 +21,7 @@ export interface XrayVertex {
 	otherAxis: number
 	movingXaxis: boolean
 	targets: number[]
-	/** A label rather than a wire; THRAX draws no track for these. */
+	/** A label rather than a wire; these have no track. */
 	isText: boolean
 	/** Palette index per colour key. */
 	colors: Partial<Record<XrayColorKey, number>>

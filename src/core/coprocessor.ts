@@ -10,7 +10,7 @@ export const FP_REGISTER_COUNT = 32
 export const FP_CONDITION_FLAG_COUNT = 8
 export const CP0_REGISTER_COUNT = 32
 
-/** CP0 registers THRAX exposes, in display order. */
+/** The CP0 registers exposed, in display order. */
 export const CP0_REGISTERS = [
 	{ index: 8, name: '$8 (vaddr)' },
 	{ index: 12, name: '$12 (status)' },
@@ -26,7 +26,7 @@ const CP0_ALIASES: Record<string, number> = {
 	$epc: 14,
 }
 
-/** THRAX boots with interrupts enabled and all interrupt masks set. */
+/** Boots with interrupts enabled and all interrupt masks set. */
 export const CP0_STATUS_INITIAL = 0x0000ff11
 /** Status bit 1: the processor is already handling an exception. */
 export const CP0_STATUS_EXL = 0x2

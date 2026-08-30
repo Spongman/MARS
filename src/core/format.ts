@@ -2,7 +2,7 @@
  * Hexadecimal formatting.
  *
  * One spelling of a 32-bit value everywhere it is shown, so the memory view,
- * the disassembly gutter, and the tools cannot drift apart.  The THRAX HexText
+ * the disassembly gutter, and the tools cannot drift apart.  The HexText
  * export is deliberately not built on this: that is a file format with its own
  * lowercase rule, not something on screen.
  */

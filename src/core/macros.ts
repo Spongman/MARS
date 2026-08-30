@@ -1,5 +1,5 @@
 /**
- * Macro preprocessor - `.macro`, `.end_macro`, and `.eqv`, as in THRAX 4.3+.
+ * Macro preprocessor - `.macro`, `.end_macro`, and `.eqv`.
  * Rewrites the token stream before parsing: definitions are removed,
  * invocations are replaced by their body with arguments substituted.
  */
@@ -120,7 +120,7 @@ class MacroExpander {
 				output.push(...argument.map((item) => ({ ...item, line: site.line, column: site.column })))
 				continue
 			}
-			// Body labels are made unique per expansion, as in THRAX.
+			// Body labels are made unique per expansion.
 			const local = (token.type === 'LABEL' || token.type === 'IDENTIFIER') && localLabels.has(token.value)
 			output.push({ ...token, value: local ? token.value + suffix : token.value, line: site.line, column: site.column })
 		}

@@ -1,6 +1,6 @@
-"""Turns THRAX's four X-Ray datapath XML files into one TypeScript module.
+"""Turns the four X-Ray datapath XML files of MARS 4.5 into one TypeScript module.
 
-Run from the repository root with a checkout of THRAX 4.5 in BASE:
+Run from the repository root with a checkout of MARS 4.5 in BASE:
     python scripts/generate-xray-datapaths.py
 """
 import io
@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 BASE = 'C:/Users/PiersH/AppData/Local/Temp/thraxorig/'
 OUT = 'src/tools/xray/datapaths.ts'
 
-# Name, THRAX's XML, and the size of the drawing its coordinates are in.
+# Name, source XML, and the size of the drawing its coordinates are in.
 DIAGRAMS = [
     ('datapath', 'MipsXRayOpcode.xml', 1000, 574),
     ('control', 'controlDatapath.xml', 800, 498),
@@ -117,13 +117,13 @@ functions = table(parse('MipsXRayOpcode.xml'), 'function_equivalence')
 registers = table(parse('MipsXRayOpcode.xml'), 'register_equivalence')
 
 header = """/**
- * Datapath drawings for the MIPS X-Ray, generated from the four XML files THRAX
- * ships beside `thrax/tools/MipsXray.java`.  Each vertex is one wire segment:
+ * Datapath drawings for the MIPS X-Ray, generated from the four X-Ray datapath
+ * XML files.  Each vertex is one wire segment:
  * it grows from `init` to `end` along one axis at `otherAxis`, and when it
  * arrives its `targets` start growing in turn.  Coordinates are pixels in the
  * space the drawing in `blocks.ts` is measured in.
  *
- * Generated, not written.  Edit the THRAX XML and regenerate instead.
+ * Generated, not written.  Edit the source XML and regenerate instead.
  */
 
 /** How a wire is coloured, chosen by the instruction being animated. */
@@ -139,7 +139,7 @@ export interface XrayVertex {
 	otherAxis: number
 	movingXaxis: boolean
 	targets: number[]
-	/** A label rather than a wire; THRAX draws no track for these. */
+	/** A label rather than a wire; these have no track. */
 	isText: boolean
 	/** Palette index per colour key. */
 	colors: Partial<Record<XrayColorKey, number>>

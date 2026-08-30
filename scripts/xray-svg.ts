@@ -1,7 +1,7 @@
 /**
  * The X-Ray drawings, out to SVG and back.
  *
- * The drawings are not SVG files: they are THRAX's vertex graph in
+ * The drawings are not SVG files: they are the vertex graph in
  * `datapaths.ts`, the blocks measured off its images in `blocks.ts`, and the
  * rules in `geometry.ts` that turn the two into lines.  Editing them by eye
  * still wants a picture, so this writes one out with every part carrying the

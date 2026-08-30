@@ -1,7 +1,7 @@
-"""Reads THRAX's datapath images and records where it painted a junction dot.
+"""Reads the MARS 4.5 datapath images and records where a junction dot was painted.
 
 The vertex graph says which wire carries a value next; it does not say whether
-two wires that cross are joined.  THRAX answered that in the drawing, with a dot
+two wires that cross are joined.  The drawing answered that, with a dot
 at every real junction and a bare crossing elsewhere, so the drawing is the
 authority and this pulls the answer out of it.
 
@@ -10,7 +10,7 @@ another -- is measured against the image.  A three-pixel wire leaves about a
 line's worth of ink in a small window, a bare crossing about two lines' worth,
 and a dot a good deal more, so the cases separate.
 
-Run from the repository root, with a checkout of THRAX 4.5 in BASE:
+Run from the repository root, with a checkout of MARS 4.5 in BASE:
     python scripts/detect-xray-junctions.py
 Needs pillow and numpy, which the app itself does not.
 """
@@ -120,9 +120,9 @@ for diagram, filename in IMAGES:
     blocks.append('\t%s: [\n%s,\n\t],' % (diagram, rows))
 
 header = """/**
- * Where THRAX painted a junction dot.
+ * Where a junction dot is painted.
  *
- * Its vertex graph records which wire carries a value next, not whether two
+ * The vertex graph records which wire carries a value next, not whether two
  * wires that cross are joined; the drawing answered that, with a dot at a real
  * junction and a bare crossing everywhere else.  These are those dots, read
  * back out of the images by `scripts/detect-xray-junctions.py` and given in the

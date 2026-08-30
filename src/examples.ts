@@ -412,7 +412,7 @@ column:
 	mmio: {
 		name: 'Keyboard and Display',
 		description: 'Echo queued keystrokes through the MMIO tool',
-		code: `# Memory-mapped I/O, as in the THRAX Keyboard and Display Simulator.
+		code: `# Memory-mapped I/O, through the Keyboard and Display Simulator.
 # Queue characters in the tool while the program runs; each one is
 # echoed to the display. A period ends the program.
 

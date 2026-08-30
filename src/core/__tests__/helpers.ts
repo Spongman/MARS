@@ -43,7 +43,7 @@ export function withExit(body: string): string {
 	return `${body}\nli $v0, 10\nsyscall\n`
 }
 
-/** Builds `source` with THRAX's delayed branching setting turned on. */
+/** Builds `source` with delayed branching turned on. */
 export function buildDelayed(source: string): MipsSimulator {
 	const { program, machineCode } = check(new Assembler(source, undefined, { delayedBranching: true }).assemble())
 	const simulator = new MipsSimulator(machineCode, program)
