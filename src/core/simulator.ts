@@ -86,8 +86,8 @@ export class MipsSimulator {
 	registers: Registers
 	memory: Map<number, number>
 	pc: number
-	hi: number
-	lo: number
+	hi: number = 0
+	lo: number = 0
 	console: string
 	running: boolean
 	halted: boolean
@@ -557,15 +557,15 @@ export class MipsSimulator {
 		if (options.pacedAddresses !== undefined) this.pacedAddresses = options.pacedAddresses
 	}
 
-	addBreakpoint(address) {
+	addBreakpoint(address: number) {
 		this.breakpoints.add(address)
 	}
 
-	removeBreakpoint(address) {
+	removeBreakpoint(address: number) {
 		this.breakpoints.delete(address)
 	}
 
-	toggleBreakpoint(address) {
+	toggleBreakpoint(address: number) {
 		if (this.breakpoints.has(address)) {
 			this.removeBreakpoint(address)
 			return false
@@ -1449,7 +1449,7 @@ export class MipsSimulator {
 	}
 
 	getMemoryView() {
-		const view = {}
+		const view: Record<string, number> = {}
 		const words = [...this.memory.entries()].sort(([a], [b]) => a - b)
 		for (const [wordAddress, value] of words) {
 			view[memoryKey(wordAddress * 4)] = value

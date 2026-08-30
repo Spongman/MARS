@@ -706,7 +706,7 @@ export class Assembler {
 		instr.args = args
 
 		// R-type instructions (func-based)
-		const rTypeInstructions = {
+		const rTypeInstructions: Record<string, { opcode: number; func: number }> = {
 			ADD: { opcode: 0, func: 0x20 },
 			ADDU: { opcode: 0, func: 0x21 },
 			SUB: { opcode: 0, func: 0x22 },
@@ -737,7 +737,7 @@ export class Assembler {
 		}
 
 		// I-type instructions
-		const iTypeInstructions = {
+		const iTypeInstructions: Record<string, number> = {
 			ADDI: 0x08,
 			ADDIU: 0x09,
 			SLTI: 0x0a,
@@ -769,7 +769,7 @@ export class Assembler {
 		}
 
 		// J-type instructions
-		const jTypeInstructions = {
+		const jTypeInstructions: Record<string, number> = {
 			J: 0x02,
 			JAL: 0x03,
 		}

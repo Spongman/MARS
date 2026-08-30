@@ -175,8 +175,8 @@ export class Lexer {
 		}
 
 		const validChars = isHex
-			? (c) => /[0-9a-fA-F]/.test(c)
-			: (c) => this.isDigit(c)
+			? (c: string) => /[0-9a-fA-F]/.test(c)
+			: (c: string) => this.isDigit(c)
 
 		while (this.pos < this.source.length && validChars(this.peek())) {
 			value += this.peek()
