@@ -43,10 +43,10 @@ const RegistersPanel = () => {
 }
 
 const MemoryPanel = () => {
-	const { callStack, memory, pc, selectedFrame, sourceMap, setHoveredAddress } = useTHRAXStore()
+	const { callStack, memory, pc, selectedFrame, sourceIndex, setHoveredAddress } = useTHRAXStore()
 	// Mark the program counter only where the editor can highlight it too: once a
 	// program halts, the pc sits past the last instruction and belongs to neither.
-	const instructionAddresses = React.useMemo(() => new Set(sourceMap.values()), [sourceMap])
+	const instructionAddresses = React.useMemo(() => sourceIndex.codeAddresses(sourceIndex.entryFile), [sourceIndex])
 	const returnAddresses = React.useMemo(() => new Set(callStack.map((frame) => frame.returnAddress)), [callStack])
 	return (
 		<div className="dock-panel dock-panel-flush">
@@ -67,14 +67,14 @@ const ConsolePanel = () => {
 }
 
 const CallStackPanel = () => {
-	const { callStack, halted, labels, pc, selectedFrame, setSelectedFrame, sourceMap } = useTHRAXStore()
+	const { callStack, halted, labels, pc, selectedFrame, setSelectedFrame, sourceIndex } = useTHRAXStore()
 	return (
 		<div className="dock-panel">
 			<CallStackView
 				frames={callStack}
 				pc={pc}
 				labels={labels}
-				hasProgram={sourceMap.size > 0}
+				hasProgram={sourceIndex.hasCode(sourceIndex.entryFile)}
 				halted={halted}
 				selectedFrame={selectedFrame}
 				onSelect={setSelectedFrame}

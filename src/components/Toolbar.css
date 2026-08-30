@@ -116,6 +116,10 @@
 	max-width: 350px;
 	z-index: 1000;
 	margin-top: 4px;
+	/* Never overflow the viewport: scroll within the remaining height below the toolbar. */
+	max-height: calc(100vh - 48px);
+	overflow-y: auto;
+	overscroll-behavior: contain;
 	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
@@ -123,7 +127,7 @@
 	display: flex;
 	flex-direction: column;
 	width: 100%;
-	padding: 12px;
+	padding: 6px 10px;
 	background: none;
 	border: none;
 	border-bottom: 1px solid var(--surface-input);
@@ -144,7 +148,7 @@
 
 .item-name {
 	font-weight: 600;
-	margin-bottom: 4px;
+	margin-bottom: 1px;
 	color: var(--accent);
 }
 

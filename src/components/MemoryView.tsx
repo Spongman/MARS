@@ -1,7 +1,7 @@
 import React from 'react'
 import './MemoryView.css'
 import type { MemoryView as Memory } from '../core/types'
-import { formatHex, formatWord } from '../core/format'
+import { formatHex, formatWord, parseWord } from '../core/format'
 import { disassemble } from '../core/disassembler'
 import { nextToggles } from './toggleGroup'
 import HexNumber from './HexNumber'
@@ -337,9 +337,8 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress 
 	}
 
 	const goToAddress = () => {
-		const normalized = addressInput.trim()
-		const address = Number.parseInt(normalized, normalized.toLowerCase().startsWith('0x') ? 16 : 10)
-		if (!Number.isInteger(address) || address < 0 || address > 0xffffffff) {
+		const address = parseWord(addressInput)
+		if (address === null || address < 0 || address > 0xffffffff) {
 			setAddressError('Enter a valid 32-bit address')
 			return
 		}

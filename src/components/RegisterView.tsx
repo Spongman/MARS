@@ -1,6 +1,7 @@
 import React from 'react'
 import './RegisterView.css'
 import { bitsToDouble, bitsToSingle, CP0_REGISTERS, formatDouble, formatSingle } from '../core/coprocessor'
+import { formatWord } from '../core/format'
 import type { CoprocessorState, Registers } from '../core/types'
 import { advanceOne, isSolo, nextToggles } from './toggleGroup'
 import FloatBitsView from './FloatBitsView'
@@ -45,7 +46,7 @@ const FORMAT_WIDTHS: Record<Format, number> = { '0n': 72, '0x': 72, 'f': 94, 'd'
 const NAME_CHAR_WIDTH = 7.2
 const MIN_NAME_WIDTH = 48
 
-const hex = (value: number) => `0x${(value >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
+const hex = formatWord
 
 type FormatFlags = Record<Format, boolean>
 

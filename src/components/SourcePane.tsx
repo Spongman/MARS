@@ -1,12 +1,13 @@
 import React from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
+import { EMPTY_SOURCE_INDEX } from '../core/sourceIndex'
 import type { CodeWord } from '../core/types'
 import { formatHex, formatWord, formatWordDigits } from '../core/format'
 import { disassemble, disassembleData } from '../core/disassembler'
 import { useTHRAXStore } from '../store/thraxStore'
-import FindReplacePanel, { type FindMatch } from './FindReplacePanel'
 import { registerMipsDebugDataTips } from '../services/debugDataTips'
+import { setFindReplaceEditor } from '../services/findReplace'
 import { heatLevel } from '../tools/profile'
 import './SourcePane.css'
 
@@ -15,7 +16,6 @@ const COLUMN_GAP = '  '
 
 /** Only the file being assembled has machine words and a program counter. */
 const NO_CODE_WORDS = new Map<number, CodeWord[]>()
-const NO_SOURCE_MAP = new Map<number, number>()
 const NO_LINES = new Set<number>()
 
 /**
@@ -24,7 +24,7 @@ const NO_LINES = new Set<number>()
  */
 let dataTipsRegistered = false
 
-const formatAddress = (address: number) => `0x${(address >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
+const formatAddress = formatWord
 
 const formatCodeWord = (row: CodeWord) => row.word === null
 	? row.bytes.map((byte) => formatHex(byte, 2)).join(' ') + (row.truncated ? ' …' : '')
@@ -37,16 +37,24 @@ interface SourcePaneProps {
 
 function SourcePane({ documentId }: SourcePaneProps) {
 	const store = useTHRAXStore()
-	const { activeDocumentId, branchHistory, breakpoints, callStack, documents, findReplaceOpen, gutterColumns, heatMap: showHeatMap, heatMapLines: showHeatLines, hoveredAddress, pipeline, profile, selectedFrame, setBreakpointLines, setDocumentCode, setFindReplaceOpen, toggleBreakpointAddress, toggleBreakpointLine } = store
+	const { activeDocumentId, branchHistory, breakpoints, callStack, documents, gutterColumns, heatMap: showHeatMap, heatMapLines: showHeatLines, hoveredAddress, pipeline, profile, selectedFrame, setBreakpointLines, setDocumentCode, toggleBreakpointAddress, toggleBreakpointLine } = store
 	// Everything the debugger marks up belongs to the file being assembled, so
 	// the other editors show their own text and none of its decorations.
 	const isEntryFile = documentId === activeDocumentId
-	const code = documents.find((document) => document.id === documentId)?.code ?? ''
+	const sourceDocument = documents.find((candidate) => candidate.id === documentId)
+	const code = sourceDocument?.code ?? ''
+	const title = sourceDocument?.title ?? ''
+	// A diagnostic names the file it came from; an unnamed one belongs to the
+	// file being assembled, which is the only one the assembler was given.
+	const diagnostics = React.useMemo(
+		() => store.diagnostics.filter((diagnostic) => diagnostic.file ? diagnostic.file === title : isEntryFile),
+		[store.diagnostics, isEntryFile, title],
+	)
 	const codeWords = isEntryFile ? store.codeWords : NO_CODE_WORDS
-	const sourceMap = isEntryFile ? store.sourceMap : NO_SOURCE_MAP
+	// Queried for this file alone, so the other editors resolve nothing.
+	const sourceIndex = isEntryFile ? store.sourceIndex : EMPTY_SOURCE_INDEX
 	const breakpointLines = isEntryFile ? store.breakpointLines : NO_LINES
 	const pc = isEntryFile ? store.pc : -1
-	const showFindReplace = findReplaceOpen && isEntryFile
 	const { address: showAddresses, code: showCodeBytes, disassembly: showDisassembly } = gutterColumns
 	const editorRef = React.useRef<editor.IStandaloneCodeEditor | null>(null)
 	const monacoRef = React.useRef<Parameters<OnMount>[1] | null>(null)
@@ -75,6 +83,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 	const handleEditorMount: OnMount = React.useCallback((editorInstance, monaco) => {
 		editorRef.current = editorInstance
 		monacoRef.current = monaco
+		if (isEntryFileRef.current) setFindReplaceEditor(editorInstance)
 		if (!dataTipsRegistered) {
 			dataTipsRegistered = true
 			registerMipsDebugDataTips(monaco, () => {
@@ -143,6 +152,14 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		editorInstance.onDidDispose(() => editorDomNode?.removeEventListener('copy', captureBreakpointCopy))
 	}, [])
 
+	// The toolbar's Find opens Monaco's find widget on the assembled file, so
+	// this editor claims it for as long as it holds that file.
+	React.useEffect(() => {
+		if (!isEntryFile) return
+		setFindReplaceEditor(editorRef.current)
+		return () => setFindReplaceEditor(null)
+	}, [isEntryFile])
+
 	// Debugger keys, captured before Monaco claims F8 and friends.  Only the
 	// editor holding the assembled program listens, so one press steps once.
 	React.useEffect(() => {
@@ -152,13 +169,8 @@ function SourcePane({ documentId }: SourcePaneProps) {
 			const store = useTHRAXStore.getState()
 			const line = editorRef.current?.getPosition()?.lineNumber
 			// Blank and comment lines carry no address, so aim at the next line that does.
-			const addressAt = (from?: number) => {
-				if (from === undefined) return undefined
-				const candidates = [...store.sourceMap.entries()]
-					.filter(([candidate]) => candidate >= from)
-					.sort(([left], [right]) => left - right)
-				return candidates[0]?.[1]
-			}
+			const addressAt = (from?: number) =>
+				from === undefined ? undefined : store.sourceIndex.codeAddressAtOrAfter(store.sourceIndex.entryFile, from)
 
 			switch (event.key) {
 				case 'F5':
@@ -206,27 +218,17 @@ function SourcePane({ documentId }: SourcePaneProps) {
 	// pseudo-instruction needs appear only once a column describes them.
 	const showWordRows = showGutter && (showCodeBytes || showDisassembly)
 
-	const handleMatchChange = React.useCallback((match: FindMatch | null) => {
-		const editorInstance = editorRef.current
-		const monaco = monacoRef.current
-		if (!editorInstance || !monaco || !match) return
-		const model = editorInstance.getModel()
-		if (!model) return
-		const start = model.getPositionAt(match.start)
-		const end = model.getPositionAt(match.end)
-		const range = new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column)
-		editorInstance.setSelection(range)
-		editorInstance.revealPositionInCenter(start)
-	}, [])
-
 	React.useEffect(() => {
 		const editorInstance = editorRef.current
 		const monaco = monacoRef.current
 		if (!editorInstance || !monaco) return
 
-		const lineForAddress = new Map([...sourceMap.entries()].map(([line, address]) => [address, line]))
 		// Pseudo-instructions put several words on one line; each maps back to it.
-		for (const [line, words] of codeWords) for (const { address } of words) lineForAddress.set(address, line)
+		const lineAt = (address: number | null) => {
+			if (address === null) return undefined
+			const location = sourceIndex.lineForAddress(address)
+			return location?.file === sourceIndex.entryFile ? location.line : undefined
+		}
 		const breakpointDecorations: editor.IModelDeltaDecoration[] = [...breakpointLines]
 			.map((line) => ({
 				range: new monaco.Range(line, 1, line, 1),
@@ -239,11 +241,11 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		breakpointDecorationIds.current = editorInstance.deltaDecorations(breakpointDecorationIds.current, breakpointDecorations)
 
 		const executionDecorations: editor.IModelDeltaDecoration[] = []
-		const currentLine = lineForAddress.get(pc)
+		const currentLine = lineAt(pc)
 		// A pseudo-instruction's later words own their own gutter row, which carries
 		// the pointer itself; the source line keeps it only when no such row shows.
-		const currentWords = currentLine === undefined ? undefined : codeWords.get(currentLine)
-		const onGutterRow = showWordRows && currentWords !== undefined && currentWords[0].address !== pc
+		const firstAddress = currentLine === undefined ? undefined : sourceIndex.addressesForLine(sourceIndex.entryFile, currentLine)[0]
+		const onGutterRow = showWordRows && firstAddress !== undefined && firstAddress !== pc
 		if (currentLine !== undefined && !onGutterRow) {
 			executionDecorations.push({
 				range: new monaco.Range(currentLine, 1, currentLine, 1),
@@ -258,7 +260,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 
 		// The memory view reports the instruction word under the pointer.
 		const hoverDecorations: editor.IModelDeltaDecoration[] = []
-		const hoveredLine = hoveredAddress === null ? undefined : lineForAddress.get(hoveredAddress)
+		const hoveredLine = lineAt(hoveredAddress)
 		if (hoveredLine !== undefined) {
 			hoverDecorations.push({
 				range: new monaco.Range(hoveredLine, 1, hoveredLine, 1),
@@ -273,7 +275,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 				: callStack[selectedFrame]?.returnAddress ?? null
 		const frameDecorations: editor.IModelDeltaDecoration[] = []
 		for (const frame of callStack) {
-			const line = lineForAddress.get(frame.returnAddress)
+			const line = lineAt(frame.returnAddress)
 			if (line === undefined) continue
 			frameDecorations.push({
 				range: new monaco.Range(line, 1, line, 1),
@@ -286,10 +288,38 @@ function SourcePane({ documentId }: SourcePaneProps) {
 
 		if (selectedFrame !== revealedFrameRef.current) {
 			revealedFrameRef.current = selectedFrame
-			const line = selectedAddress === null ? undefined : lineForAddress.get(selectedAddress)
+			const line = lineAt(selectedAddress)
 			if (line !== undefined) editorInstance.revealLineInCenterIfOutsideViewport(line)
 		}
-	}, [breakpointLines, breakpoints, callStack, codeWords, hoveredAddress, pc, selectedFrame, showWordRows, sourceMap])
+	}, [breakpointLines, breakpoints, callStack, hoveredAddress, pc, selectedFrame, showWordRows, sourceIndex])
+
+	// Assembly diagnostics for this file, as squiggles under the offending text.
+	// An empty list clears them, so a fixed line stops being marked as the user types.
+	React.useEffect(() => {
+		const editorInstance = editorRef.current
+		const monaco = monacoRef.current
+		const model = editorInstance?.getModel()
+		if (!editorInstance || !monaco || !model) return
+
+		const lineCount = model.getLineCount()
+		const markers: editor.IMarkerData[] = diagnostics.map((diagnostic) => {
+			const line = Math.min(Math.max(diagnostic.line ?? 1, 1), lineCount)
+			const lineEnd = model.getLineMaxColumn(line)
+			const startColumn = Math.min(Math.max(diagnostic.column ?? 1, 1), lineEnd)
+			// Without a column of its own, a diagnostic marks the whole line.
+			const endColumn = Math.min(diagnostic.endColumn ?? (diagnostic.column === undefined ? lineEnd : startColumn + 1), lineEnd)
+			return {
+				severity: diagnostic.severity === 'warning' ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Error,
+				message: diagnostic.message,
+				source: 'thrax',
+				startLineNumber: line,
+				startColumn,
+				endLineNumber: line,
+				endColumn: Math.max(endColumn, startColumn + 1),
+			}
+		})
+		monaco.editor.setModelMarkers(model, 'thrax', markers)
+	}, [code, diagnostics])
 
 	// Stepping keeps the instruction about to run inside the middle third of the
 	// editor: crossing an edge scrolls by just enough to hold it there, so the
@@ -300,17 +330,11 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		if (!editorInstance || !monaco || revealedPc.current === pc) return
 		revealedPc.current = pc
 
-		let line: number | undefined
-		let row = 0
-		for (const [candidate, words] of codeWords) {
-			const index = words.findIndex((word) => word.address === pc)
-			if (index < 0) continue
-			line = candidate
-			row = showWordRows ? index : 0
-			break
-		}
-		if (line === undefined) line = [...sourceMap.entries()].find(([, address]) => address === pc)?.[0]
-		if (line === undefined) return
+		const location = sourceIndex.lineForAddress(pc)
+		if (location?.file !== sourceIndex.entryFile) return
+		const line = location.line
+		// A pseudo-instruction's later words sit in rows of their own below the line.
+		const row = showWordRows ? Math.max(0, sourceIndex.addressesForLine(location.file, line).indexOf(pc)) : 0
 
 		const lineHeight = editorInstance.getOption(monaco.editor.EditorOption.lineHeight)
 		const { height } = editorInstance.getLayoutInfo()
@@ -320,7 +344,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		const lowest = (height * 2) / 3 - lineHeight
 		if (offset >= highest && offset <= lowest) return
 		editorInstance.setScrollTop(Math.max(0, top - (offset < highest ? highest : lowest)))
-	}, [codeWords, pc, showWordRows, sourceMap])
+	}, [pc, showWordRows, sourceIndex])
 
 	// Execution counts, as a heat map over the line numbers and a hover that
 	// reports what the profile, the branch predictor and the pipeline model saw
@@ -489,7 +513,6 @@ function SourcePane({ documentId }: SourcePaneProps) {
 
 	return (
 		<div className="source-pane">
-			{showFindReplace && <FindReplacePanel code={code} onChange={(value) => setDocumentCode(documentId, value)} onMatchChange={handleMatchChange} onClose={() => setFindReplaceOpen(false)} />}
 			<div className="source-editor">
 				<Editor
 					height="100%"

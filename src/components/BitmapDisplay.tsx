@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { memoryKey } from '../core/format'
+import { memoryKey, parseWord } from '../core/format'
 import type { MemoryView } from '../core/types'
 import { isOneOf, useStoredState } from '../hooks/useStoredState'
 import './BitmapDisplay.css'
@@ -12,10 +12,8 @@ const DISPLAY_SIZES = [128, 256, 512]
 const UNIT_SIZES = [1, 2, 4, 8, 16]
 
 function parseAddress(value: string) {
-	const trimmed = value.trim()
-	if (!trimmed) return null
-	const parsed = /^0x/i.test(trimmed) ? Number.parseInt(trimmed.slice(2), 16) : Number(trimmed)
-	return Number.isInteger(parsed) && parsed >= 0 && parsed <= 0xffffffff ? parsed >>> 0 : null
+	const parsed = parseWord(value)
+	return parsed !== null && parsed >= 0 && parsed <= 0xffffffff ? parsed >>> 0 : null
 }
 
 function BitmapDisplay({ memory }: BitmapDisplayProps) {

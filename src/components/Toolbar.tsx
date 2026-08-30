@@ -2,6 +2,7 @@ import React from 'react'
 import { DEFAULT_GUTTER_COLUMNS, RUN_SPEEDS, useTHRAXStore } from '../store/thraxStore'
 import { AddressIcon, CodeBytesIcon, DisassemblyIcon, HeatLinesIcon, HeatMapIcon } from './icons'
 import { nextToggles } from './toggleGroup'
+import { openFindReplace } from '../services/findReplace'
 import './Toolbar.css'
 import { EXAMPLES } from '../examples'
 
@@ -11,9 +12,27 @@ interface ToolbarProps {
 }
 
 function Toolbar({ onRun, onReset }: ToolbarProps) {
-	const { assemble, assembleAllFiles, continue: continueExecution, createDocument, delayedBranching, exportHexText, findReplaceOpen, gutterColumns, hasSavedProgram, heatMap, heatMapLines, isPaused, isRunning, loadProgram, pause, runSpeed, saveProgram, setAssembleAllFiles, setDelayedBranching, setFindReplaceOpen, setGutterColumns, setHeatMap, setHeatMapLines, setRunSpeed, step, stepBack, stepOver, stepToReturn } = useTHRAXStore()
+	const { assemble, assembleAllFiles, continue: continueExecution, createDocument, delayedBranching, exportHexText, gutterColumns, hasSavedProgram, heatMap, heatMapLines, isPaused, isRunning, loadProgram, pause, runSpeed, saveProgram, setAssembleAllFiles, setDelayedBranching, setGutterColumns, setHeatMap, setHeatMapLines, setRunSpeed, step, stepBack, stepOver, stepToReturn } = useTHRAXStore()
 	const [showExamples, setShowExamples] = React.useState(false)
+	const exampleMenuRef = React.useRef<HTMLDivElement>(null)
 	const [storageMessage, setStorageMessage] = React.useState<string | null>(null)
+
+	// Dismiss the examples menu on an outside click or Escape.
+	React.useEffect(() => {
+		if (!showExamples) return
+		const onPointerDown = (event: PointerEvent) => {
+			if (!exampleMenuRef.current?.contains(event.target as Node)) setShowExamples(false)
+		}
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') setShowExamples(false)
+		}
+		document.addEventListener('pointerdown', onPointerDown)
+		document.addEventListener('keydown', onKeyDown)
+		return () => {
+			document.removeEventListener('pointerdown', onPointerDown)
+			document.removeEventListener('keydown', onKeyDown)
+		}
+	}, [showExamples])
 
 	const handleLoadExample = (example: (typeof EXAMPLES)[keyof typeof EXAMPLES]) => {
 		window.dispatchEvent(
@@ -179,9 +198,8 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 			</div>
 
 			<button
-				className={`btn btn-secondary${findReplaceOpen ? ' btn-active' : ''}`}
-				aria-pressed={findReplaceOpen}
-				onClick={() => setFindReplaceOpen(!findReplaceOpen)}
+				className="btn btn-secondary"
+				onClick={openFindReplace}
 				title="Find and replace in the source being assembled"
 			>
 				Find
@@ -189,7 +207,7 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 
 			<div className="spacer"></div>
 
-			<div className="example-dropdown">
+			<div className="example-dropdown" ref={exampleMenuRef}>
 				<button
 					className="btn btn-secondary"
 					onClick={() => setShowExamples(!showExamples)}

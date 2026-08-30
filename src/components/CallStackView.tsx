@@ -1,4 +1,5 @@
 import type { CallFrame } from '../core/types'
+import { formatWord } from '../core/format'
 import './CallStackView.css'
 
 interface CallStackViewProps {
@@ -12,7 +13,7 @@ interface CallStackViewProps {
 	onSelect: (frame: number | null) => void
 }
 
-const formatAddress = (address: number) => `0x${(address >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
+const formatAddress = formatWord
 
 /** Nearest label at or below `address`, rendered as `name` or `name+0x<offset>`. */
 function describeAddress(address: number, labels: Map<string, number>) {

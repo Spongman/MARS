@@ -1,6 +1,7 @@
 import { Assembler } from '../core/assembler'
 import { bitsToDouble, bitsToSingle, formatDouble, formatSingle } from '../core/coprocessor'
-import { formatWord, memoryKey } from '../core/format'
+import { formatWord, memoryKey, parseWord } from '../core/format'
+import { REGISTER_NAMES } from '../core/registers'
 import type { MemoryView, Registers } from '../core/types'
 
 interface DebugDataTipState {
@@ -33,13 +34,6 @@ interface MonacoHover {
 	contents: Array<{ value: string }>
 }
 
-const REGISTER_NAMES = [
-	'$zero', '$at', '$v0', '$v1', '$a0', '$a1', '$a2', '$a3',
-	'$t0', '$t1', '$t2', '$t3', '$t4', '$t5', '$t6', '$t7',
-	'$s0', '$s1', '$s2', '$s3', '$s4', '$s5', '$s6', '$s7',
-	'$t8', '$t9', '$k0', '$k1', '$gp', '$sp', '$fp', '$ra',
-]
-
 function formatValue(value: number) {
 	const unsigned = value >>> 0
 	return `${formatWord(unsigned)} (${value | 0}, unsigned ${unsigned})`
@@ -67,15 +61,6 @@ function getFpRegisterContents(index: number, fpRegisters: number[]) {
 	}
 	return contents.map((value) => ({ value }))
 }
-
-function parseNumber(value: string) {
-	const sign = value.startsWith('-') ? -1 : 1
-	const digits = sign === -1 ? value.slice(1) : value
-	const parsed = /^0x/i.test(digits) ? Number.parseInt(digits.slice(2), 16) : Number.parseInt(digits, 10)
-	return Number.isNaN(parsed) ? null : sign * parsed
-}
-
-
 
 function getTokenRange(monaco: MonacoLike, position: MonacoPosition, start: number, length: number) {
 	return new monaco.Range(position.lineNumber, start + 1, position.lineNumber, start + length + 1)
@@ -110,7 +95,7 @@ export function registerMipsDebugDataTips(monaco: MonacoLike, getState: () => De
 				if (offset < start || offset > start + match[0].length) continue
 				const offsetText = match[1]
 				const base = getRegisterValue(match[2], state.registers)
-				const displacement = offsetText ? (parseNumber(offsetText) ?? labels.get(offsetText) ?? 0) : 0
+				const displacement = offsetText ? (parseWord(offsetText) ?? labels.get(offsetText) ?? 0) : 0
 				const address = (base.value + displacement) >>> 0
 				const value = state.memory[memoryKey(address)] ?? 0
 				return {
@@ -145,7 +130,7 @@ export function registerMipsDebugDataTips(monaco: MonacoLike, getState: () => De
 			for (const match of line.matchAll(tokenMatch)) {
 				const start = match.index ?? 0
 				if (offset < start || offset > start + match[0].length) continue
-				const number = parseNumber(match[0])
+				const number = parseWord(match[0])
 				if (number !== null) {
 					return {
 						range: getTokenRange(monaco, position, start, match[0].length),
