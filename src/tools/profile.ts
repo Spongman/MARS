@@ -74,6 +74,10 @@ export class ExecutionProfile implements ExecutionObserver {
 		this.max = 0
 	}
 
+	onReset() {
+		this.reset()
+	}
+
 	snapshot(): ProfileSnapshot {
 		const byAddress = new Map<number, AddressProfile>()
 		for (const [address, entry] of this.addresses) byAddress.set(address, { ...entry })

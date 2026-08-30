@@ -1,0 +1,202 @@
+/**
+ * The register of tools that watch a run.
+ *
+ * Each tool observes through the ExecutionObserver seam and knows nothing about
+ * the store.  What the store needs of them is the same for every one: attach to
+ * a freshly assembled program, restart between runs, remember the settings the
+ * user chose, and hand the view a snapshot.  Saying that once here means a new
+ * tool is one entry below rather than an edit in every one of those places.
+ */
+
+import type { ExecutionObserver, MachineConfig } from '../core/observer'
+import { readStoredSetting, writeStoredSetting } from '../hooks/useStoredState'
+import { BranchHistoryTable, DEFAULT_BHT_SETTINGS } from './branchHistory'
+import { CacheSimulator, DEFAULT_CACHE_SETTINGS } from './cache'
+import { DEFAULT_PIPELINE_SETTINGS, PipelineModel } from './pipeline'
+import { ExecutionProfile } from './profile'
+import { InstructionStatistics } from './statistics'
+
+/** An observer that can also be read and, for some, configured. */
+export interface Tool<Settings = unknown, Snapshot = unknown> extends ExecutionObserver {
+	configure?(settings: Settings): void
+	snapshot(): Snapshot
+}
+
+/** Settings the user chooses, which outlive the session. */
+export interface ToolSetting<Settings = unknown> {
+	/** Key under the settings prefix; see readStoredSetting. */
+	storageKey: string
+	defaults: Settings
+	/**
+	 * Settings are validated field by field: a stored setting the tool cannot
+	 * read would otherwise reach it as a configuration it has no branch for.
+	 */
+	isValid: (value: unknown) => boolean
+}
+
+export interface ToolEntry<Key extends string = string, Settings = unknown, Snapshot = unknown> {
+	/** Names the tool, and the field its snapshot lands in. */
+	key: Key
+	tool: Tool<Settings, Snapshot>
+	/** Absent for a tool with nothing to configure. */
+	setting?: ToolSetting<Settings>
+}
+
+type Entries = readonly ToolEntry[]
+
+/** Every tool's snapshot, keyed by tool. */
+export type ToolViews<E extends Entries> = {
+	[Entry in E[number] as Entry['key']]: ReturnType<Entry['tool']['snapshot']>
+}
+
+/** The settings of the tools that have any, keyed by tool. */
+export type ToolSettings<E extends Entries> = {
+	[Entry in E[number] as Entry extends { setting: ToolSetting } ? Entry['key'] : never]:
+		Entry extends { setting: ToolSetting<infer Settings> } ? Settings : never
+}
+
+/** Callbacks a tool is watched through, so a wrapper can forward them all. */
+const CALLBACKS: Array<keyof ExecutionObserver> = ['onInstruction', 'onMemoryRead', 'onMemoryWrite', 'onBranch', 'onReset', 'onConfigure']
+
+type Callback = (...args: never[]) => void
+
+interface ToolState {
+	entry: ToolEntry
+	/** What the simulator sees: the tool, plus a note that it has read something. */
+	observer: ExecutionObserver
+	version: number
+	/** Version the held snapshot was taken at, or -1 for none yet. */
+	viewedVersion: number
+	view: unknown
+}
+
+/**
+ * Wraps a tool so that every callback it implements marks its reading as moved
+ * on.  Callbacks it does not implement are left off, so the simulator skips it
+ * for events it does not care about.
+ */
+function watch(entry: ToolEntry): ToolState {
+	const state: ToolState = { entry, observer: {}, version: 0, viewedVersion: -1, view: undefined }
+	const tool = entry.tool as unknown as Record<string, Callback | undefined>
+	const observer = state.observer as unknown as Record<string, Callback>
+	for (const name of CALLBACKS) {
+		if (typeof tool[name] !== 'function') continue
+		observer[name] = (...args: never[]) => {
+			state.version += 1
+			// Called through the tool so the method keeps its own `this`.
+			tool[name]!(...args)
+		}
+	}
+	return state
+}
+
+export class ToolRegistry<E extends Entries> {
+	private readonly states: ToolState[]
+
+	constructor(entries: E) {
+		this.states = entries.map(watch)
+	}
+
+	/**
+	 * Points every tool at a fresh run of `machine`, from clean readings.  The
+	 * reset and the machine both go out through the observer interface, which is
+	 * the only thing the simulator itself would use.
+	 */
+	attach(simulator: { observers: ExecutionObserver[] }, machine: MachineConfig) {
+		this.resetAll()
+		for (const state of this.states) {
+			state.observer.onConfigure?.(machine)
+			simulator.observers.push(state.observer)
+		}
+	}
+
+	/** Tells every tool its accumulated readings belong to a previous run. */
+	resetAll() {
+		for (const state of this.states) state.observer.onReset?.()
+	}
+
+	/** Configures one tool and remembers the choice. */
+	setSettings<Key extends keyof ToolSettings<E> & string>(key: Key, settings: ToolSettings<E>[Key]) {
+		const state = this.states.find((candidate) => candidate.entry.key === key)
+		if (!state?.entry.setting) return
+		state.entry.tool.configure?.(settings)
+		state.version += 1
+		writeStoredSetting(state.entry.setting.storageKey, settings)
+	}
+
+	/** Applies what was stored for each tool, and reports it. */
+	loadSettings(): ToolSettings<E> {
+		const settings: Record<string, unknown> = {}
+		for (const state of this.states) {
+			const setting = state.entry.setting
+			if (!setting) continue
+			const stored = readStoredSetting(setting.storageKey, setting.defaults, setting.isValid)
+			state.entry.tool.configure?.(stored)
+			state.version += 1
+			settings[state.entry.key] = stored
+		}
+		return settings as ToolSettings<E>
+	}
+
+	/**
+	 * Each tool's reading.  A tool that has seen nothing since the last call
+	 * hands back the same object, so a view of it does not redraw: snapshots are
+	 * whole-run copies, and most of them are taken for a panel nobody opened.
+	 */
+	views(): ToolViews<E> {
+		const views: Record<string, unknown> = {}
+		for (const state of this.states) {
+			if (state.viewedVersion !== state.version) {
+				state.view = state.entry.tool.snapshot()
+				state.viewedVersion = state.version
+			}
+			views[state.entry.key] = state.view
+		}
+		return views as ToolViews<E>
+	}
+}
+
+const CACHE_SETTING = 'tools.cache'
+const BRANCH_HISTORY_SETTING = 'tools.branchHistory'
+const PIPELINE_SETTING = 'tools.pipeline'
+
+const isBoolean = (value: unknown) => typeof value === 'boolean'
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+const isCount = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value > 0
+
+const isCacheSettings = (value: unknown) => isRecord(value) &&
+	isCount(value.blockCount) && isCount(value.blockSizeBytes) && isCount(value.associativity) &&
+	['lru', 'random', 'fifo'].includes(value.replacement as string)
+
+const isBranchHistorySettings = (value: unknown) => isRecord(value) &&
+	isCount(value.entryCount) && (value.historyBits === 1 || value.historyBits === 2) && isBoolean(value.initiallyTaken)
+
+const isPipelineSettings = (value: unknown) => isRecord(value) &&
+	['forwarding', 'split-decode', 'none'].includes(value.dataHazards as string) &&
+	['id', 'ex', 'mem'].includes(value.resolveBranchIn as string) &&
+	['id', 'ex'].includes(value.resolveJumpIn as string) &&
+	['none', 'taken', 'not-taken', 'one-bit', 'two-bit'].includes(value.prediction as string) &&
+	isCount(value.windowSize)
+
+/** The tools a run is watched by.  A new one is an entry in this list. */
+export function createToolRegistry() {
+	return new ToolRegistry([
+		{ key: 'statistics', tool: new InstructionStatistics() },
+		{ key: 'profile', tool: new ExecutionProfile() },
+		{
+			key: 'cache',
+			tool: new CacheSimulator(),
+			setting: { storageKey: CACHE_SETTING, defaults: DEFAULT_CACHE_SETTINGS, isValid: isCacheSettings },
+		},
+		{
+			key: 'branchHistory',
+			tool: new BranchHistoryTable(),
+			setting: { storageKey: BRANCH_HISTORY_SETTING, defaults: DEFAULT_BHT_SETTINGS, isValid: isBranchHistorySettings },
+		},
+		{
+			key: 'pipeline',
+			tool: new PipelineModel(),
+			setting: { storageKey: PIPELINE_SETTING, defaults: DEFAULT_PIPELINE_SETTINGS, isValid: isPipelineSettings },
+		},
+	] as const)
+}

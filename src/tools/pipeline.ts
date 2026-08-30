@@ -16,7 +16,7 @@
  */
 
 import type { Decoded } from '../core/decoder'
-import type { ExecutionObserver } from '../core/observer'
+import type { ExecutionObserver, MachineConfig } from '../core/observer'
 
 export const STAGES = ['IF', 'ID', 'EX', 'MEM', 'WB'] as const
 export type Stage = (typeof STAGES)[number]
@@ -208,8 +208,9 @@ export class PipelineModel implements ExecutionObserver {
 	private lastStats: PipelineAddressStats | null = null
 	/**
 	 * Whether the simulator is running with delay slots, which the front end
-	 * fills usefully and so does not have to flush.  Set by whoever attaches the
-	 * model; `reset` leaves it alone because it describes the machine, not the run.
+	 * fills usefully and so does not have to flush.  It arrives with the machine
+	 * configuration at `onConfigure`; `reset` leaves it alone because it
+	 * describes the machine, not the run.
 	 */
 	delaySlots = false
 
@@ -251,6 +252,14 @@ export class PipelineModel implements ExecutionObserver {
 		this.predictor.clear()
 		this.addresses.clear()
 		this.lastStats = null
+	}
+
+	onReset() {
+		this.reset()
+	}
+
+	onConfigure(machine: MachineConfig) {
+		this.delaySlots = machine.delayedBranching
 	}
 
 	private statsFor(address: number) {

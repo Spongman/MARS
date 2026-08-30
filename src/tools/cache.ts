@@ -74,6 +74,10 @@ export class CacheSimulator implements ExecutionObserver {
 		this.clock = 0
 	}
 
+	onReset() {
+		this.reset()
+	}
+
 	onMemoryRead(address: number) {
 		this.access(address)
 	}

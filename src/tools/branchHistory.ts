@@ -79,6 +79,10 @@ export class BranchHistoryTable implements ExecutionObserver {
 		this.correct = 0
 	}
 
+	onReset() {
+		this.reset()
+	}
+
 	onBranch(address: number, taken: boolean) {
 		const counter = this.counters[this.indexOf(address)]
 		const predicted = this.predictsTaken(counter.state)

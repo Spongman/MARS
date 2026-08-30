@@ -67,6 +67,10 @@ export class InstructionStatistics implements ExecutionObserver {
 		this.mnemonics.clear()
 	}
 
+	onReset() {
+		this.reset()
+	}
+
 	snapshot(): StatisticsSnapshot {
 		const byCategory = {} as Record<InstructionCategory, number>
 		for (const category of Object.keys(CATEGORY_LABELS) as InstructionCategory[]) {
