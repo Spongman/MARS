@@ -1,15 +1,19 @@
 import { create } from 'zustand'
 import { Assembler, type SourceFile } from '../core/assembler'
 import { CP0_REGISTER_COUNT, CP0_STATUS_INITIAL, FP_CONDITION_FLAG_COUNT, FP_REGISTER_COUNT } from '../core/coprocessor'
+import { hasErrors } from '../core/diagnostics'
 import { MipsSimulator } from '../core/simulator'
-import type { CallFrame, CodeWord, CoprocessorState, KeyboardDisplayState, MemoryView, PendingInput, Registers } from '../core/types'
+import { EMPTY_SOURCE_INDEX, type SourceIndex, type SourceRow } from '../core/sourceIndex'
+import type { CallFrame, CodeWord, CoprocessorState, Diagnostic, KeyboardDisplayState, MemoryView, PendingInput, Registers } from '../core/types'
+import { DebugSession } from '../debug/session'
 import { isFlagSet, readStoredSetting, writeStoredSetting } from '../hooks/useStoredState'
 import { downloadHexText } from '../services/hexTextExport'
-import { BranchHistoryTable, DEFAULT_BHT_SETTINGS, type BranchHistorySettings, type BranchHistorySnapshot } from '../tools/branchHistory'
-import { CacheSimulator, DEFAULT_CACHE_SETTINGS, type CacheSettings, type CacheSnapshot } from '../tools/cache'
-import { DEFAULT_PIPELINE_SETTINGS, PipelineModel, type PipelineSettings, type PipelineSnapshot } from '../tools/pipeline'
-import { ExecutionProfile, type ProfileSnapshot } from '../tools/profile'
-import { InstructionStatistics, type StatisticsSnapshot } from '../tools/statistics'
+import type { BranchHistorySettings, BranchHistorySnapshot } from '../tools/branchHistory'
+import type { CacheSettings, CacheSnapshot } from '../tools/cache'
+import type { PipelineSettings, PipelineSnapshot } from '../tools/pipeline'
+import type { ProfileSnapshot } from '../tools/profile'
+import { createToolRegistry } from '../tools/registry'
+import type { StatisticsSnapshot } from '../tools/statistics'
 
 /**
  * Instructions per second the run-speed control offers.  null runs flat out;
@@ -44,32 +48,9 @@ const HEAT_MAP_SETTING = 'source.heatmap'
 const RUN_SPEED_SETTING = 'run.speed'
 const ASSEMBLE_ALL_SETTING = 'assemble.allFiles'
 const DELAYED_BRANCHING_SETTING = 'assemble.delayedBranching'
-const CACHE_SETTING = 'tools.cache'
-const BRANCH_HISTORY_SETTING = 'tools.branchHistory'
-const PIPELINE_SETTING = 'tools.pipeline'
+const HEAT_MAP_LINES_SETTING = 'source.heatmap.lines'
 
 const isBoolean = (value: unknown) => typeof value === 'boolean'
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
-const isCount = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value > 0
-
-/**
- * Tool settings are validated field by field: a stored setting the tool cannot
- * read would otherwise reach it as a configuration it has no branch for.
- */
-const isCacheSettings = (value: unknown) => isRecord(value) &&
-	isCount(value.blockCount) && isCount(value.blockSizeBytes) && isCount(value.associativity) &&
-	['lru', 'random', 'fifo'].includes(value.replacement as string)
-
-const isBranchHistorySettings = (value: unknown) => isRecord(value) &&
-	isCount(value.entryCount) && (value.historyBits === 1 || value.historyBits === 2) && isBoolean(value.initiallyTaken)
-
-const isPipelineSettings = (value: unknown) => isRecord(value) &&
-	['forwarding', 'split-decode', 'none'].includes(value.dataHazards as string) &&
-	['id', 'ex', 'mem'].includes(value.resolveBranchIn as string) &&
-	['id', 'ex'].includes(value.resolveJumpIn as string) &&
-	['none', 'taken', 'not-taken', 'one-bit', 'two-bit'].includes(value.prediction as string) &&
-	isCount(value.windowSize)
-const HEAT_MAP_LINES_SETTING = 'source.heatmap.lines'
 
 export interface SourceDocument {
 	id: string
@@ -172,11 +153,13 @@ interface THRAXStore extends CoprocessorState {
 	registers: Registers
 	memory: MemoryView
 	console: string
-	currentLine: number
 	pc: number
 	halted: boolean
 	instructionCount: number
-	sourceMap: Map<number, number>
+	/** Which line of which file every machine word of the program came from. */
+	sourceIndex: SourceIndex
+	/** Everything wrong with the source, as the editor marks it up. */
+	diagnostics: Diagnostic[]
 	/** Machine words of the entry file, keyed by source line, in address order. */
 	codeWords: Map<number, CodeWord[]>
 	labels: Map<string, number>
@@ -200,7 +183,6 @@ interface THRAXStore extends CoprocessorState {
 	/** Whether the heat map tints the source line behind the code as well. */
 	heatMapLines: boolean
 	/** Whether the source editor is showing its find and replace bar. */
-	findReplaceOpen: boolean
 	/** Address the memory view is pointing at, highlighted in the source editor. */
 	hoveredAddress: number | null
 	/** Index into callStack of the selected frame, -1 for the running frame, null for none. */
@@ -237,10 +219,6 @@ interface THRAXStore extends CoprocessorState {
 	setBranchHistorySettings: (settings: BranchHistorySettings) => void
 	setPipelineSettings: (settings: PipelineSettings) => void
 	sendKeyboardInput: (input: string) => void
-	setRegisters: (registers: Registers) => void
-	setMemory: (memory: MemoryView) => void
-	appendConsole: (text: string) => void
-	clearConsole: () => void
 	run: () => Promise<void>
 	step: () => void
 	stepBack: () => void
@@ -252,9 +230,6 @@ interface THRAXStore extends CoprocessorState {
 	setProgramCounter: (address: number) => void
 	pause: () => void
 	continue: () => Promise<void>
-	addBreakpoint: (address: number) => void
-	removeBreakpoint: (address: number) => void
-	toggleBreakpoint: (address: number) => void
 	toggleBreakpointLine: (line: number) => void
 	toggleBreakpointAddress: (address: number) => void
 	setBreakpointLines: (lines: Iterable<number>) => void
@@ -263,7 +238,6 @@ interface THRAXStore extends CoprocessorState {
 	setGutterColumns: (columns: GutterColumns) => void
 	setHeatMap: (shown: boolean) => void
 	setHeatMapLines: (shown: boolean) => void
-	setFindReplaceOpen: (open: boolean) => void
 	setConsoleAttention: (attention: 'none' | 'output' | 'input') => void
 	/** Assembles without reporting failures, to keep the memory view current while editing. */
 	refreshAssembly: () => void
@@ -271,22 +245,17 @@ interface THRAXStore extends CoprocessorState {
 }
 
 export const useTHRAXStore = create<THRAXStore>((set, get) => {
-	let simulator: MipsSimulator | null = null
-	/** File whose source map and machine words decorate the editor. */
-	let entryFile = ''
+	// A setting saved before a column existed still names the ones it knew about.
+	const savedGutterColumns: GutterColumns = { ...DEFAULT_GUTTER_COLUMNS, ...readStoredSetting(GUTTER_SETTING, DEFAULT_GUTTER_COLUMNS, isFlagSet(['code', 'disassembly'])) }
 
-	const normalizeBreakpointLines = (lines: Set<number>, sourceMap: Map<number, number>) => {
-		const codeLines = [...sourceMap.keys()].sort((left, right) => left - right)
-		return new Set([...lines].flatMap((line) => {
-			const target = codeLines.find((codeLine) => codeLine >= line)
-			return target === undefined ? [] : [target]
-		}))
-	}
+	/** Stepping policy, breakpoints, and the runtime they drive. */
+	const debug = new DebugSession(() => ensureSimulator())
+	debug.setWordRows(savedGutterColumns.disassembly)
 
 	/**
 	 * Every open tab is visible to `.include`; which of them are assembled into
 	 * the program depends on the multi-file setting.  The active tab comes first,
-	 * so it owns the entry point and the source map the editor is decorated with.
+	 * so it is the entry file, whose lines the editor is decorated with.
 	 */
 	const assemblySources = (): { files: SourceFile[], entries: string[] } => {
 		const { activeDocumentId, assembleAllFiles, code, documents } = get()
@@ -299,104 +268,69 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		return { files, entries: assembleAllFiles ? files.map((file) => file.name) : [activeFile.name] }
 	}
 
+	const tools = createToolRegistry()
 	// Tool settings outlive the session, so the tools start configured as they
 	// were left rather than at their defaults.
-	const initialCacheSettings = readStoredSetting(CACHE_SETTING, DEFAULT_CACHE_SETTINGS, isCacheSettings)
-	const initialBranchHistorySettings = readStoredSetting(BRANCH_HISTORY_SETTING, DEFAULT_BHT_SETTINGS, isBranchHistorySettings)
-	const initialPipelineSettings = readStoredSetting(PIPELINE_SETTING, DEFAULT_PIPELINE_SETTINGS, isPipelineSettings)
+	const toolSettings = tools.loadSettings()
 
-	const statistics = new InstructionStatistics()
-	const profile = new ExecutionProfile()
-	const cache = new CacheSimulator(initialCacheSettings)
-	const branchHistory = new BranchHistoryTable(initialBranchHistorySettings)
-	const pipeline = new PipelineModel(initialPipelineSettings)
-
-	/** The tool readings, recomputed whenever the view is refreshed. */
-	const toolView = () => ({
-		statistics: statistics.snapshot(),
-		profile: profile.snapshot(),
-		cache: cache.snapshot(),
-		branchHistory: branchHistory.snapshot(),
-		pipeline: pipeline.snapshot(),
-	})
-
-	const createSimulator = (breakpointLines: Set<number>) => {
+	/** A simulator over the assembled program, or the diagnostics that stopped it. */
+	const createSimulator = (): { simulator: MipsSimulator | null, diagnostics: Diagnostic[] } => {
 		const { files, entries } = assemblySources()
 		const { delayedBranching } = get()
 		const assembler = new Assembler(files, entries, { delayedBranching })
-		const { program, machineCode } = assembler.assemble()
-		entryFile = assembler.entryFile
+		const { program, machineCode, diagnostics } = assembler.assemble()
+		// A program that did not assemble is not worth loading; its diagnostics stand
+		// for it, and the stale program it would have replaced is let go.
+		if (hasErrors(diagnostics)) {
+			debug.detach()
+			return { simulator: null, diagnostics }
+		}
 		const nextSimulator = new MipsSimulator(machineCode, program)
 		nextSimulator.delayedBranching = delayedBranching
-		pipeline.delaySlots = delayedBranching
-		nextSimulator.speed = get().runSpeed
-		nextSimulator.pacedAddresses = get().gutterColumns.disassembly ? null : visibleAddresses(nextSimulator)
+		nextSimulator.configure({ speed: get().runSpeed })
 		// A paced run is worth watching, so refresh the workspace between batches.
-		nextSimulator.onProgress = () => set({ ...simulatorView(), ...toolView(), isRunning: true, isPaused: false })
-		statistics.reset()
-		profile.reset()
-		cache.reset()
-		branchHistory.reset()
-		pipeline.reset()
-		nextSimulator.observers.push(statistics, profile, cache, branchHistory, pipeline)
-		const normalizedBreakpointLines = normalizeBreakpointLines(breakpointLines, program.sourceMap)
-		for (const line of normalizedBreakpointLines) {
-			const address = program.sourceMap.get(line)
-			if (address !== undefined) nextSimulator.addBreakpoint(address)
-		}
-		// Address breakpoints outlive the re-assembly that follows every edit.
-		for (const address of get().breakpointAddresses) nextSimulator.addBreakpoint(address)
-		return { simulator: nextSimulator, breakpointLines: normalizedBreakpointLines }
+		nextSimulator.onProgress = () => set({ ...simulatorView(), ...tools.views(), isRunning: true, isPaused: false })
+		tools.attach(nextSimulator, { delayedBranching })
+		// Breakpoints and the addresses worth stopping at outlive re-assembly.
+		debug.rebind(nextSimulator, program.sourceIndex)
+		return { simulator: nextSimulator, diagnostics }
 	}
 
-	/** Data rows are four bytes wide, like the instructions above them. */
-	const DATA_ROW_BYTES = 4
-	/** Long data, such as a string or `.space`, stops after this many rows. */
-	const MAX_DATA_ROWS = 4
+	/**
+	 * Diagnostics reach the editor as markers; the console keeps the one line per
+	 * error it printed before there were any.
+	 */
+	const report = (diagnostics: Diagnostic[]) => {
+		const errors = diagnostics.filter((diagnostic) => diagnostic.severity === 'error')
+		return errors.length === 0
+			? { diagnostics }
+			: { diagnostics, console: errors.map((error) => `Error: ${error.message}`).join('\n') }
+	}
+
+	/** An exception no pass turned into a diagnostic is reported as one. */
+	const reportException = (error: unknown) => report([{ severity: 'error', message: error instanceof Error ? error.message : String(error) }])
+
+	/**
+	 * The index says which words a line owns; the bytes are read live, so data
+	 * the program has written to shows what it holds now.
+	 */
+	const codeWordFor = (row: SourceRow, current: MipsSimulator): CodeWord => {
+		if (row.instruction === null) {
+			const bytes = Array.from({ length: row.length ?? 0 }, (_, offset) => current.readByte(row.address + offset))
+			return { address: row.address, word: null, bytes, directive: row.directive, offset: row.offset, truncated: row.truncated }
+		}
+		const word = current.machineCode[row.instruction] ?? 0
+		return { address: row.address, word, bytes: [0, 1, 2, 3].map((offset) => (word >>> (24 - offset * 8)) & 0xff) }
+	}
 
 	/** Groups the assembled bytes of the entry file under the line that wrote them. */
 	const entryCodeWords = (current: MipsSimulator) => {
-		const codeWords = new Map<number, CodeWord[]>()
-		const addRow = (line: number, row: CodeWord) => {
-			const rows = codeWords.get(line) ?? []
-			rows.push(row)
-			codeWords.set(line, rows)
-		}
-
-		current.program.instructions.forEach((instruction, index) => {
-			if ((instruction.sourceFile ?? '') !== entryFile || instruction.address === null) return
-			const word = current.machineCode[index] ?? 0
-			const bytes = [0, 1, 2, 3].map((offset) => (word >>> (24 - offset * 8)) & 0xff)
-			addRow(instruction.sourceLine, { address: instruction.address, word, bytes })
-		})
-
-		// Data holds no instructions, so its rows carry the loaded bytes alone.
-		for (const entry of current.program.data) {
-			if ((entry.sourceFile ?? '') !== entryFile || entry.sourceLine === undefined) continue
-			const size = entry.bytes.reduce<number>((total, item) => total + (typeof item === 'number' ? 1 : item.width), 0)
-			const wanted = Math.ceil(size / DATA_ROW_BYTES)
-			const rows = Math.min(wanted, MAX_DATA_ROWS)
-			for (let row = 0; row < rows; row += 1) {
-				const address = entry.address + row * DATA_ROW_BYTES
-				const bytes: number[] = []
-				for (let offset = 0; offset < DATA_ROW_BYTES && address + offset < entry.address + size; offset += 1) {
-					bytes.push(current.readByte(address + offset))
-				}
-				addRow(entry.sourceLine, {
-					address,
-					word: null,
-					bytes,
-					directive: entry.directive,
-					offset: row * DATA_ROW_BYTES,
-					truncated: row === rows - 1 && wanted > rows,
-				})
-			}
-		}
-
-		return codeWords
+		const index = current.program.sourceIndex
+		return new Map([...index.lines(index.entryFile)].map(([line, rows]) => [line, rows.map((row) => codeWordFor(row, current))]))
 	}
 
 	const simulatorView = () => {
+		const simulator = debug.machine
 		if (!simulator) return {}
 		const state = simulator.getState()
 		return {
@@ -410,7 +344,7 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 			isPaused: state.paused,
 			executionHistory: simulator.getExecutionHistory(),
 			breakpoints: new Set(simulator.getBreakpoints()),
-			sourceMap: new Map(simulator.program.sourceMap),
+			sourceIndex: simulator.program.sourceIndex,
 			codeWords: entryCodeWords(simulator),
 			labels: new Map(simulator.program.labels),
 			callStack: state.callStack,
@@ -420,46 +354,49 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 			fpRegisters: state.fpRegisters,
 			fpConditionFlags: state.fpConditionFlags,
 			cp0Registers: state.cp0Registers,
-			...toolView(),
+			...tools.views(),
 		}
 	}
 
-	/** Addresses that own a source line, which is all the editor can point at. */
-	const visibleAddresses = (current: MipsSimulator) => new Set(current.program.sourceMap.values())
+	/** Builds the program a debug control was pressed before there was one. */
+	function ensureSimulator(): MipsSimulator | null {
+		const created = createSimulator()
+		set({ ...debug.view(), ...report(created.diagnostics) })
+		return created.simulator
+	}
 
 	/**
-	 * A word with no line of its own, such as the tail of a pseudo-instruction, is
-	 * worth stopping at only while the disassembly column shows it.  Breakpoints
-	 * and the end of the program always win.
+	 * Runs one debug control and publishes what it did.  A control with no
+	 * program to drive says so rather than throwing, and a fault in the program
+	 * is reported as a diagnostic.
 	 */
-	let hiddenWordGuard = 0
-	const atHiddenWord = (current: MipsSimulator, visible: Set<number>) => {
-		if (hiddenWordGuard > 10000) return false
-		if (get().gutterColumns.disassembly || current.halted || current.paused) return false
-		if (current.breakpoints.has(current.pc) || visible.has(current.pc)) return false
-		hiddenWordGuard += 1
-		return true
+	const controlled = (action: () => boolean, after: Partial<THRAXStore> = {}) => {
+		try {
+			// Nothing to drive still clears the run flag the caller may have raised.
+			set(action() ? { ...simulatorView(), ...after } : { isRunning: false })
+		} catch (error) {
+			set({ ...reportException(error), isRunning: false })
+		}
 	}
 
-	const ensureSimulator = () => {
-		if (!simulator) {
-			const state = get()
-			const created = createSimulator(state.breakpointLines)
-			simulator = created.simulator
-			set({ breakpointLines: created.breakpointLines })
+	const controlledAsync = async (action: () => Promise<boolean>, after: () => Partial<THRAXStore> = () => ({})) => {
+		try {
+			set((await action()) ? { ...simulatorView(), ...after() } : { isRunning: false })
+		} catch (error) {
+			set({ ...reportException(error), isRunning: false })
 		}
-		return simulator
 	}
+
+	const paused = { isPaused: true }
 
 	const resetExecution = () => ({
 		registers: initialRegisters,
 		memory: {},
 		console: '',
-		currentLine: 0,
 		pc: 0x00400000,
 		halted: false,
 		instructionCount: 0,
-		sourceMap: new Map<number, number>(),
+		sourceIndex: EMPTY_SOURCE_INDEX,
 		codeWords: new Map<number, CodeWord[]>(),
 		labels: new Map<string, number>(),
 		callStack: [],
@@ -482,28 +419,23 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		...resetExecution(),
 		breakpointLines: new Set<number>(),
 		breakpointAddresses: new Set<number>(),
+		diagnostics: [],
 		hoveredAddress: null,
 		selectedFrame: null,
-		// A setting saved before a column existed still names the ones it knew about.
-		gutterColumns: { ...DEFAULT_GUTTER_COLUMNS, ...readStoredSetting(GUTTER_SETTING, DEFAULT_GUTTER_COLUMNS, isFlagSet(['code', 'disassembly'])) },
+		gutterColumns: savedGutterColumns,
 		heatMap: readStoredSetting(HEAT_MAP_SETTING, false, (value) => typeof value === 'boolean'),
 		heatMapLines: readStoredSetting(HEAT_MAP_LINES_SETTING, false, (value) => typeof value === 'boolean'),
-		findReplaceOpen: false,
 		runToken: 0,
 		consoleAttention: 'none',
 		hasSavedProgram: getSavedProgram() !== null,
 		runSpeed: readStoredSetting<number | null>(RUN_SPEED_SETTING, null, (value) => RUN_SPEEDS.includes(value as number | null)),
-		statistics: new InstructionStatistics().snapshot(),
-		profile: new ExecutionProfile().snapshot(),
-		cache: cache.snapshot(),
-		cacheSettings: initialCacheSettings,
-		branchHistory: branchHistory.snapshot(),
-		branchHistorySettings: initialBranchHistorySettings,
-		pipeline: pipeline.snapshot(),
-		pipelineSettings: initialPipelineSettings,
+		...tools.views(),
+		cacheSettings: toolSettings.cache,
+		branchHistorySettings: toolSettings.branchHistory,
+		pipelineSettings: toolSettings.pipeline,
 
 		setCode: (newCode) => {
-			simulator = null
+			debug.detach()
 			set((state) => ({
 				code: newCode,
 				documents: state.documents.map((document) => document.id === state.activeDocumentId
@@ -521,7 +453,7 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 				state.setCode(newCode)
 				return
 			}
-			simulator = null
+			debug.detach()
 			set({
 				documents: state.documents.map((document) => document.id === documentId
 					? { ...document, code: newCode, dirty: true }
@@ -531,7 +463,7 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		},
 
 		setAssembleAllFiles: (assembleAllFiles) => {
-			simulator = null
+			debug.detach()
 			writeStoredSetting(ASSEMBLE_ALL_SETTING, assembleAllFiles)
 			set({ assembleAllFiles, ...resetExecution() })
 		},
@@ -539,7 +471,7 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		// The setting reaches the assembler as well, so the program has to be
 		// built again rather than merely restarted.
 		setDelayedBranching: (delayedBranching) => {
-			simulator = null
+			debug.detach()
 			writeStoredSetting(DELAYED_BRANCHING_SETTING, delayedBranching)
 			set({ delayedBranching, ...resetExecution() })
 		},
@@ -571,7 +503,7 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 				: [{ id: 'main', title: 'main.asm', code: program.code, dirty: false }]
 			const activeDocumentId = hasSavedDocuments(program) ? program.activeDocumentId : documents[0].id
 			const activeDocument = documents.find((document) => document.id === activeDocumentId)!
-			simulator = null
+			debug.detach()
 			set({
 				code: activeDocument.code,
 				documents,
@@ -586,12 +518,13 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		exportHexText: () => {
 			try {
 				const { files, entries } = assemblySources()
-				const { machineCode } = new Assembler(files, entries).assemble()
+				const { machineCode, diagnostics } = new Assembler(files, entries).assemble()
+				set(report(diagnostics))
+				if (hasErrors(diagnostics)) return false
 				downloadHexText(machineCode)
 				return true
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error)
-				set({ console: `Error: ${message}` })
+				set(reportException(error))
 				return false
 			}
 		},
@@ -604,7 +537,7 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 				code: '',
 				dirty: false,
 			}
-			simulator = null
+			debug.detach()
 			set((state) => ({
 				documents: [...state.documents, document],
 				activeDocumentId: id,
@@ -616,12 +549,12 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		selectDocument: (documentId) => {
 			const document = get().documents.find((candidate) => candidate.id === documentId)
 			if (!document || document.id === get().activeDocumentId) return
-			simulator = null
+			debug.detach()
 			set({ activeDocumentId: document.id, code: document.code, ...resetExecution() })
 		},
 
 		renameDocument: (documentId, title) => {
-			simulator = null
+			debug.detach()
 			set((state) => ({
 				documents: state.documents.map((document) => document.id === documentId ? { ...document, title, dirty: true } : document),
 				...resetExecution(),
@@ -636,7 +569,7 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 			const activeDocument = documentId === state.activeDocumentId
 				? remainingDocuments[Math.max(0, state.documents.findIndex((document) => document.id === documentId) - 1)]
 				: remainingDocuments.find((document) => document.id === state.activeDocumentId)!
-			simulator = null
+			debug.detach()
 			set({
 				documents: remainingDocuments,
 				activeDocumentId: activeDocument.id,
@@ -645,219 +578,113 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 			})
 		},
 
+		// Half-written source is expected here, so the diagnostics reach the editor
+		// live while the console is left to the Assemble button and to running.
 		refreshAssembly: () => {
 			try {
-				const state = get()
-				const created = createSimulator(state.breakpointLines)
-				simulator = created.simulator
-				set({ ...simulatorView(), breakpointLines: created.breakpointLines })
-			} catch {
-				// Half-written source is expected here; the Assemble button reports errors.
+				const created = createSimulator()
+				if (!created.simulator) {
+					set({ diagnostics: created.diagnostics })
+					return
+				}
+				set({ ...simulatorView(), ...debug.view(), diagnostics: created.diagnostics })
+			} catch (error) {
+				set({ diagnostics: reportException(error).diagnostics })
 			}
 		},
 
 		assemble: () => {
 			try {
-				const state = get()
-				const created = createSimulator(state.breakpointLines)
-				simulator = created.simulator
-				set({ ...simulatorView(), breakpointLines: created.breakpointLines })
+				const created = createSimulator()
+				set({
+					...(created.simulator ? simulatorView() : {}),
+					...debug.view(),
+					...report(created.diagnostics),
+				})
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error)
-				set({ console: `Error: ${message}` })
+				set(reportException(error))
 			}
 		},
 
 		setRunSpeed: (speed) => {
-			if (simulator) simulator.speed = speed
+			debug.machine?.configure({ speed })
 			writeStoredSetting(RUN_SPEED_SETTING, speed)
 			set({ runSpeed: speed })
 		},
 
 		setCacheSettings: (settings) => {
-			cache.configure(settings)
-			writeStoredSetting(CACHE_SETTING, settings)
-			set({ cacheSettings: settings, cache: cache.snapshot() })
+			tools.setSettings('cache', settings)
+			set({ cacheSettings: settings, ...tools.views() })
 		},
 
 		setBranchHistorySettings: (settings) => {
-			branchHistory.configure(settings)
-			writeStoredSetting(BRANCH_HISTORY_SETTING, settings)
-			set({ branchHistorySettings: settings, branchHistory: branchHistory.snapshot() })
+			tools.setSettings('branchHistory', settings)
+			set({ branchHistorySettings: settings, ...tools.views() })
 		},
 
 		setPipelineSettings: (settings) => {
-			pipeline.configure(settings)
-			writeStoredSetting(PIPELINE_SETTING, settings)
-			set({ pipelineSettings: settings, pipeline: pipeline.snapshot() })
+			tools.setSettings('pipeline', settings)
+			set({ pipelineSettings: settings, ...tools.views() })
 		},
 
 		submitInput: async (input, cancelled = false) => {
-			if (!simulator || !simulator.provideInput(input, cancelled)) return
-			await simulator.continue()
+			if (!debug.machine?.provideInput(input, cancelled)) return
+			await debug.continue()
 			set(simulatorView())
 		},
 
 		sendKeyboardInput: (input) => {
-			if (!input || !simulator) return
-			simulator.queueKeyboardInput(input)
+			if (!input || !debug.machine) return
+			debug.machine.queueKeyboardInput(input)
 			set(simulatorView())
 		},
 
-		setRegisters: (newRegisters) => set({ registers: newRegisters }),
-
-		setMemory: (newMemory) => set({ memory: newMemory }),
-
-		appendConsole: (text) =>
-			set((state) => ({
-				console: state.console + text,
-			})),
-
-		clearConsole: () => set({ console: '' }),
-
+		// Assembly failures are reported, not thrown: only an unexpected exception
+		// reaches the error bar above the workspace.
 		run: async (): Promise<void> => {
-			const state = get()
-			const created = createSimulator(state.breakpointLines)
-			simulator = created.simulator
+			const created = createSimulator()
+			if (!created.simulator) {
+				set({ ...debug.view(), ...report(created.diagnostics) })
+				return
+			}
 			set({
 				isRunning: true,
 				isPaused: false,
 				pendingInput: null,
-				breakpointLines: created.breakpointLines,
+				...debug.view(),
+				diagnostics: created.diagnostics,
 				runToken: get().runToken + 1,
 				consoleAttention: 'none',
 			})
-			await simulator.run()
+			await created.simulator.run()
 			set(simulatorView())
 		},
 
-		step: () => {
-			try {
-				hiddenWordGuard = 0
-				const current = ensureSimulator()
-				const visible = visibleAddresses(current)
-				current.step()
-				while (atHiddenWord(current, visible)) current.step()
-				set({ ...simulatorView(), isPaused: true })
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error)
-				set({ console: `Error: ${message}` })
-			}
+		step: () => controlled(() => debug.step(), paused),
+
+		stepBack: () => controlled(() => debug.stepBack()),
+
+		stepOver: () => controlledAsync(() => debug.stepOver(), () => paused),
+
+		stepToReturn: () => controlledAsync(() => debug.stepToReturn(), () => paused),
+
+		pause: () => controlled(() => debug.pause()),
+
+		runToAddress: (address) => {
+			set({ isRunning: true, isPaused: false })
+			return controlledAsync(() => debug.runTo(address), () => ({ isPaused: !debug.machine?.halted }))
 		},
 
-		stepBack: () => {
-			if (!simulator) return
-			simulator.stepBack()
-			set(simulatorView())
-		},
+		setProgramCounter: (address) => controlled(() => debug.setProgramCounter(address), paused),
 
-		stepOver: async () => {
-			try {
-				hiddenWordGuard = 0
-				const current = ensureSimulator()
-				const visible = visibleAddresses(current)
-				await current.stepOver()
-				while (atHiddenWord(current, visible)) await current.stepOver()
-				set({ ...simulatorView(), isPaused: true })
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error)
-				set({ console: `Error: ${message}` })
-			}
-		},
-
-		stepToReturn: async () => {
-			try {
-				await ensureSimulator().stepToReturn()
-				set({ ...simulatorView(), isPaused: true })
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error)
-				set({ console: `Error: ${message}` })
-			}
-		},
-
-		pause: () => {
-			if (simulator) {
-				simulator.paused = true
-				simulator.running = false
-				set(simulatorView())
-			}
-		},
-
-		runToAddress: async (address) => {
-			try {
-				const current = ensureSimulator()
-				const wanted = current.breakpoints.has(address)
-				current.breakpoints.add(address)
-				set({ isRunning: true, isPaused: false })
-				await current.continue()
-				if (!wanted) current.breakpoints.delete(address)
-				set({ ...simulatorView(), isPaused: !current.halted })
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error)
-				set({ console: `Error: ${message}`, isRunning: false })
-			}
-		},
-
-		setProgramCounter: (address) => {
-			const current = ensureSimulator()
-			current.pc = address >>> 0
-			current.halted = false
-			set({ ...simulatorView(), isPaused: true })
-		},
-
-		continue: async () => {
-			if (simulator) {
-				await simulator.continue()
-				set(simulatorView())
-			}
-		},
-
-		addBreakpoint: (address) => {
-			if (simulator) simulator.addBreakpoint(address)
-			set((state) => ({ breakpoints: new Set(simulator?.getBreakpoints() || [...state.breakpoints, address]) }))
-		},
-
-		removeBreakpoint: (address) => {
-			if (simulator) simulator.removeBreakpoint(address)
-			set((state) => ({
-				breakpoints: simulator ? new Set(simulator.getBreakpoints()) : new Set([...state.breakpoints].filter((item) => item !== address)),
-			}))
-		},
-
-		toggleBreakpoint: (address) => {
-			if (simulator) simulator.toggleBreakpoint(address)
-			set((state) => {
-				const breakpoints = simulator
-					? new Set(simulator.getBreakpoints())
-					: new Set(state.breakpoints)
-				if (!simulator) {
-					if (breakpoints.has(address)) breakpoints.delete(address)
-					else breakpoints.add(address)
-				}
-				return { breakpoints }
-			})
-		},
+		continue: () => controlledAsync(() => debug.continue()),
 
 		toggleBreakpointAddress: (address) => {
-			const breakpointAddresses = new Set(get().breakpointAddresses)
-			if (breakpointAddresses.has(address)) breakpointAddresses.delete(address)
-			else breakpointAddresses.add(address)
-			simulator?.toggleBreakpoint(address)
-			set({ breakpointAddresses, breakpoints: new Set(simulator?.getBreakpoints() ?? breakpointAddresses) })
+			if (debug.toggleBreakpointAddress(address)) set(debug.view())
 		},
 
 		toggleBreakpointLine: (line) => {
-			const state = get()
-			const address = state.sourceMap.get(line)
-			if (state.sourceMap.size > 0 && address === undefined) return
-			const breakpointLines = new Set(state.breakpointLines)
-			if (breakpointLines.has(line)) breakpointLines.delete(line)
-			else breakpointLines.add(line)
-			if (simulator && address !== undefined) simulator.toggleBreakpoint(address)
-			set({
-				breakpointLines,
-				breakpoints: simulator ? new Set(simulator.getBreakpoints()) : new Set(),
-			})
+			if (debug.toggleBreakpointLine(line)) set(debug.view())
 		},
 
 		setHoveredAddress: (address) => set({ hoveredAddress: address }),
@@ -867,9 +694,9 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		setConsoleAttention: (attention) => set({ consoleAttention: attention }),
 
 		setGutterColumns: (columns) => {
-			// A paced run animates whatever the editor can point at, which the
-			// disassembly column widens to every machine word.
-			if (simulator) simulator.pacedAddresses = columns.disassembly ? null : visibleAddresses(simulator)
+			// Word rows widen what stepping stops at, and what a paced run animates,
+			// to every machine word rather than the first word of each line.
+			debug.setWordRows(columns.disassembly)
 			writeStoredSetting(GUTTER_SETTING, columns)
 			set({ gutterColumns: columns })
 		},
@@ -884,18 +711,16 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 			set({ heatMapLines: shown })
 		},
 
-		setFindReplaceOpen: (open) => set({ findReplaceOpen: open }),
-
 		setBreakpointLines: (lines) => {
-			set({ breakpointLines: new Set([...lines].filter((line) => Number.isInteger(line) && line > 0)) })
+			debug.setBreakpointLines(lines)
+			set(debug.view())
 		},
 
 		reset: () => {
-			simulator = null
+			debug.clear()
 			set({
 				...resetExecution(),
-				breakpointLines: new Set(),
-				breakpointAddresses: new Set(),
+				...debug.view(),
 			})
 			// Leave the freshly assembled program in memory rather than a blank view.
 			get().refreshAssembly()
