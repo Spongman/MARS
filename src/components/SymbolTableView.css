@@ -1,0 +1,85 @@
+.symbol-view {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	height: 100%;
+	padding: 10px;
+	box-sizing: border-box;
+	overflow: auto;
+}
+
+.symbol-controls {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	position: sticky;
+	top: 0;
+	background: var(--panel-bg, #1e1e1e);
+	padding-bottom: 4px;
+	z-index: 1;
+}
+
+.symbol-filter {
+	flex: 1;
+	min-width: 0;
+	font-family: inherit;
+	font-size: 12px;
+	padding: 2px 6px;
+}
+
+.symbol-sort {
+	display: flex;
+	gap: 2px;
+}
+
+.symbol-heading {
+	position: sticky;
+	top: 26px;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	opacity: 0.65;
+	padding: 4px 0 2px;
+	background: var(--panel-bg, #1e1e1e);
+}
+
+.symbol-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-family: 'Courier New', monospace;
+	font-size: 12px;
+}
+
+.symbol-table td {
+	padding: 1px 4px;
+	white-space: nowrap;
+}
+
+.symbol-name {
+	width: 99%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.symbol-address {
+	text-align: right;
+}
+
+.symbol-link {
+	background: none;
+	border: none;
+	padding: 0;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+}
+
+.symbol-link:hover {
+	text-decoration: underline;
+}
+
+.symbol-empty {
+	opacity: 0.6;
+	font-size: 12px;
+	padding: 8px 2px;
+}

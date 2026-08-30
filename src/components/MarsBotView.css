@@ -1,0 +1,18 @@
+.mars-bot-canvas {
+	flex: 1;
+	min-height: 200px;
+	width: 100%;
+	background: var(--surface-raised);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.mars-bot-track {
+	stroke: #3b82f6;
+	stroke-width: 1.5;
+	vector-effect: non-scaling-stroke;
+}
+
+.mars-bot-body {
+	fill: var(--text-primary);
+}

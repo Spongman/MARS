@@ -1,0 +1,103 @@
+.settings-dialog {
+	width: 560px;
+	height: 560px;
+}
+
+/*
+ * The title stacks have to meet the top and bottom edges of the scrolling area,
+ * so it carries no vertical padding of its own; the rows bring their own
+ * breathing room instead.  A sticky offset pins the margin edge, so a title
+ * must have no vertical margin either, or every stuck one sits that far out of
+ * its slot and the stack stops stepping evenly.
+ */
+.settings-dialog .modal-body {
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+.settings-dialog .modal-body > *:last-child {
+	margin-bottom: 12px;
+}
+
+/*
+ * Every title is always on screen: those above the reading position pile up at
+ * the top, those below pile at the bottom, and the inline `top`/`bottom` each
+ * one carries is its own slot in that stack, so they meet without overlapping.
+ * The height is fixed because those offsets are multiples of it.
+ *
+ * This only works because a group is a fragment: a sticky element cannot leave
+ * its parent's box, so a section element of its own would take its title with
+ * it as it scrolled away.
+ */
+.settings-title {
+	position: sticky;
+	z-index: 1;
+	box-sizing: border-box;
+	height: 24px;
+	/* Vertical margin stays zero, per the note above; the sides bleed into the
+	   body's padding so the band spans the full width. */
+	margin: 0 -12px;
+	padding: 4px 12px 3px;
+	border-bottom: 1px solid var(--border);
+	background: var(--surface-raised);
+	color: var(--text-bright);
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 16px;
+	cursor: pointer;
+}
+
+.settings-title:hover {
+	color: var(--accent);
+}
+
+.settings-row {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	padding: 3px 0;
+	cursor: pointer;
+}
+
+.settings-row input[type='checkbox'] {
+	cursor: pointer;
+}
+
+/* The reason for a setting sits under its label rather than in a tooltip only. */
+.settings-hint {
+	display: block;
+	color: var(--text-muted);
+	font-size: 11px;
+}
+
+.settings-field > span:first-child {
+	width: 140px;
+	flex: none;
+}
+
+.settings-field input,
+.settings-field select {
+	flex: 1;
+	height: var(--control-height);
+	min-width: 0;
+	padding: 0 4px;
+	background: var(--surface-input);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	color: var(--text-primary);
+	font: inherit;
+}
+
+.settings-field input:disabled {
+	color: var(--text-disabled);
+}
+
+.settings-addresses {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	padding: 4px 0 0 146px;
+	color: var(--text-muted);
+	font-family: var(--font-mono);
+	font-size: 11px;
+}

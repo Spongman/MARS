@@ -1,0 +1,72 @@
+.digital-lab {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 10px;
+	box-sizing: border-box;
+	height: 100%;
+	overflow: auto;
+	font-size: 12px;
+}
+
+.lab-displays {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+
+.seven-segment {
+	width: 48px;
+	height: 68px;
+	background: #14161a;
+	border-radius: 3px;
+	padding: 2px;
+}
+
+.segment {
+	fill: rgba(255, 90, 70, 0.13);
+}
+
+.segment.lit {
+	fill: #ff5a46;
+}
+
+.lab-keypad {
+	display: grid;
+	grid-template-columns: repeat(4, 34px);
+	gap: 3px;
+}
+
+.lab-key {
+	height: 30px;
+	font-family: 'Courier New', monospace;
+	cursor: pointer;
+}
+
+.lab-key.held {
+	background: #ff5a46;
+	color: #14161a;
+	font-weight: bold;
+}
+
+.lab-readout {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 2px 10px;
+	margin: 0;
+	font-family: 'Courier New', monospace;
+}
+
+.lab-readout dt {
+	opacity: 0.6;
+}
+
+.lab-readout dd {
+	margin: 0;
+}
+
+.lab-help {
+	margin: 0;
+	opacity: 0.65;
+	line-height: 1.4;
+}

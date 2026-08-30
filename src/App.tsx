@@ -1,12 +1,15 @@
 import React from 'react'
-import { useTHRAXStore } from './store/thraxStore'
+import { sourceSignature, useTHRAXStore } from './store/thraxStore'
 import { useExamples } from './hooks/useExamples'
 import Toolbar from './components/Toolbar'
 import DockLayout from './components/DockLayout'
 import './App.css'
 
 function App() {
-	const { code, refreshAssembly, run, reset } = useTHRAXStore()
+	const { refreshAssembly, run, reset } = useTHRAXStore()
+	// Bug 12: watching the active file alone left an edit to an included file
+	// out of the program until the active one was touched.
+	const sources = useTHRAXStore((state) => sourceSignature(state.documents))
 	const [error, setError] = React.useState<string | null>(null)
 
 	useExamples()
@@ -15,7 +18,7 @@ function App() {
 	React.useEffect(() => {
 		const handle = window.setTimeout(refreshAssembly, 300)
 		return () => window.clearTimeout(handle)
-	}, [code, refreshAssembly])
+	}, [sources, refreshAssembly])
 
 	const handleRun = React.useCallback(async () => {
 		setError(null)

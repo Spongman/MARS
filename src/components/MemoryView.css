@@ -197,6 +197,41 @@
 	cursor: default;
 }
 
+/* A placeholder is scenery: dimming it lets real strings stand out of the dots. */
+.memory-char.unprintable {
+	opacity: 0.35;
+}
+
+/*
+ * A named byte has to read as notation rather than as text, or it is just
+ * another letter in the column.  Hue and weight carry that, not a different
+ * family: these glyphs come from wherever the font stack can find them, and
+ * their natural advance is anyone's guess, so each is boxed into exactly one
+ * character cell and centred in it.  That keeps the ASCII column a grid however
+ * the glyph is drawn.  The slight reduction keeps a wide glyph inside its cell
+ * rather than being clipped by it.
+ */
+.memory-char.icon {
+	display: inline-block;
+	/*
+	 * `ch` is measured in this element's own font, so the size must not be
+	 * touched here: shrinking the glyph would shrink the cell with it and pull
+	 * the column out of step with the printable characters beside it.  A glyph
+	 * wider than its cell overhangs rather than widening the grid, and overflow
+	 * stays visible so the box keeps a text baseline to sit on.
+	 */
+	width: 1ch;
+	color: var(--accent);
+	opacity: 0.75;
+	font-weight: 600;
+	text-align: center;
+}
+
+.memory-toggle:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
 .memory-byte.hovered,
 .memory-char.hovered {
 	background: var(--accent-surface);
@@ -237,4 +272,22 @@
 	font-size: 11px;
 	font-family: 'Courier New', monospace;
 	white-space: nowrap;
+}
+
+/* A cell being typed over sits in the space the value occupied. */
+.cell-editor {
+	font: inherit;
+	color: inherit;
+	background: rgba(80, 140, 220, 0.18);
+	border: 1px solid rgba(80, 140, 220, 0.7);
+	border-radius: 2px;
+	padding: 0 2px;
+	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.cell-editor.rejected {
+	border-color: #d9534f;
+	background: rgba(217, 83, 79, 0.18);
 }

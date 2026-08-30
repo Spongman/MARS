@@ -1,4 +1,4 @@
-import { CATEGORY_LABELS, type InstructionCategory, type StatisticsSnapshot } from '../tools/statistics'
+import { CATEGORY_LABELS, FORMAT_LABELS, type InstructionCategory, type InstructionFormat, type StatisticsSnapshot } from '../tools/statistics'
 import './ToolPanels.css'
 
 interface Props {
@@ -6,9 +6,10 @@ interface Props {
 }
 
 const CATEGORIES = Object.keys(CATEGORY_LABELS) as InstructionCategory[]
+const FORMATS = Object.keys(FORMAT_LABELS) as InstructionFormat[]
 
 function InstructionStatisticsView({ statistics }: Props) {
-	const { total, byCategory, byMnemonic } = statistics
+	const { total, byCategory, byFormat, byMnemonic } = statistics
 
 	return (
 		<div className="tool">
@@ -23,6 +24,24 @@ function InstructionStatisticsView({ statistics }: Props) {
 				</div>
 			</div>
 
+			<div className="tool-section-title">By format</div>
+			<div>
+				{FORMATS.map((encoding) => {
+					const count = byFormat[encoding]
+					const share = total === 0 ? 0 : count / total
+					return (
+						<div className="tool-bar-row" key={encoding}>
+							<span>{FORMAT_LABELS[encoding]}</span>
+							<div className="tool-bar-track">
+								<div className="tool-bar-fill" style={{ width: `${share * 100}%` }} />
+							</div>
+							<span className="tool-bar-value">{count.toLocaleString()}</span>
+						</div>
+					)
+				})}
+			</div>
+
+			<div className="tool-section-title">By kind</div>
 			<div>
 				{CATEGORIES.map((category) => {
 					const count = byCategory[category]

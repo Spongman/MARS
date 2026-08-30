@@ -239,3 +239,12 @@
 	background: var(--surface-input);
 	color: var(--warning);
 }
+
+/* Names a group of bars, where a panel shows more than one breakdown. */
+.tool-section-title {
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	opacity: 0.6;
+	margin-top: 6px;
+}

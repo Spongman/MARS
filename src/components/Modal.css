@@ -1,0 +1,77 @@
+/* Above dockview's floating groups and the examples dropdown. */
+.modal-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 2000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.modal {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	min-width: 320px;
+	max-width: min(720px, calc(100vw - 32px));
+	max-height: calc(100vh - 64px);
+	background: var(--surface-raised);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+	color: var(--text-primary);
+	font-size: 12px;
+}
+
+/* A moved dialog is positioned itself, so the backdrop must not stretch it. */
+.modal-movable {
+	align-self: flex-start;
+}
+
+.modal-grip {
+	cursor: move;
+	user-select: none;
+}
+
+/* Sits over the corner of whatever is last, footer or body. */
+.modal-resize {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	width: 16px;
+	height: 16px;
+	cursor: nwse-resize;
+	background: linear-gradient(135deg, transparent 50%, var(--border-strong) 50%, var(--border-strong) 60%, transparent 60%, transparent 75%, var(--border-strong) 75%, var(--border-strong) 85%, transparent 85%);
+}
+
+.modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 8px 8px 8px 12px;
+	border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-bright);
+}
+
+.modal-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	padding: 12px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.modal-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+	padding: 8px 12px;
+	border-top: 1px solid var(--border);
+}

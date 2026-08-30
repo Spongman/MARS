@@ -1,0 +1,57 @@
+.intro-to-tools {
+	gap: 16px;
+	line-height: 1.5;
+}
+
+.intro-to-tools h3 {
+	margin: 4px 0 0;
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--text-secondary);
+	border-bottom: 1px solid var(--border);
+	padding-bottom: 6px;
+}
+
+.intro-tool {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 8px 0;
+	border-bottom: 1px solid var(--border);
+}
+
+.intro-tool-name {
+	font-weight: 600;
+	color: var(--text-primary);
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.intro-tool-status {
+	font-weight: 400;
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+}
+
+.intro-tool-field {
+	color: var(--text-secondary);
+}
+
+.intro-tool-label {
+	color: var(--text-primary);
+	font-weight: 600;
+	margin-right: 6px;
+}
+
+.intro-to-tools-footnote {
+	color: var(--text-secondary);
+	font-size: 11px;
+}
+
+.intro-to-tools-footnote code {
+	font-family: var(--font-mono);
+}

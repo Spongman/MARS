@@ -4,7 +4,11 @@ import type { MemoryView as Memory } from '../core/types'
 import { formatHex, formatWord, parseWord } from '../core/format'
 import { disassemble } from '../core/disassembler'
 import { nextToggles } from './toggleGroup'
-import HexNumber from './HexNumber'
+import HexNumber, { dimmedDigits } from './HexNumber'
+import EditableCell from './EditableCell'
+import { parseEditedValue } from './editValue'
+import { MEMORY_CONFIGURATIONS, type HexDimming, type MemoryConfigurationValues } from '../core/settings'
+import { useTHRAXStore } from '../store/thraxStore'
 import { isFlagSet, isOneOf, useStoredState } from '../hooks/useStoredState'
 
 interface MemoryViewProps {
@@ -15,22 +19,41 @@ interface MemoryViewProps {
 	returnAddresses: Set<number>
 	/** Address to scroll to when it changes, from a selected call stack frame. */
 	focusAddress: number | null
+	/**
+	 * Bumped each time a panel asks for an address, so asking for the one
+	 * already shown brings it back into view rather than doing nothing.
+	 */
+	focusRequest?: number
+	/** Off while a program runs; on, a word can be typed over. */
+	editable?: boolean
+	/** Writes one aligned word, returning false when the machine refused it. */
+	onEditWord?: (address: number, value: number) => boolean
 	onHoverAddress: (address: number | null) => void
 }
 
 interface MemorySection { id: string; label: string; start: number; end: number }
 
-/** THRAX memory map segments, ordered as they appear in the address space. */
-const SECTIONS: MemorySection[] = [
-	{ id: 'text', label: '.text', start: 0x00400000, end: 0x0ffffffc },
-	{ id: 'data', label: '.data', start: 0x10010000, end: 0x1003fffc },
-	{ id: 'heap', label: 'heap', start: 0x10040000, end: 0x6ffffffc },
-	{ id: 'stack', label: 'stack', start: 0x70000000, end: 0x7ffffffc },
-	{ id: 'kdata', label: 'kernel', start: 0x80000000, end: 0xfffefffc },
-	{ id: 'mmio', label: 'MMIO', start: 0xffff0000, end: 0xfffffffc },
-]
+const SECTION_IDS = ['text', 'data', 'heap', 'stack', 'kdata', 'mmio']
 
-const TEXT_SECTION = SECTIONS[0]
+/**
+ * Memory map segments, ordered as they appear in the address space.  The
+ * configuration draws every boundary but one: it gives the heap and the stack a
+ * single region, since they grow towards each other.  They are shown apart, so
+ * the stack takes the top eighth of that span and the heap the rest.
+ */
+export function sectionsFor(layout: MemoryConfigurationValues): MemorySection[] {
+	// Unsigned: a bitwise AND alone would turn the top of the address space negative.
+	const word = (address: number) => (address & ~3) >>> 0
+	const stackStart = word(layout.stackBaseAddress - (layout.stackBaseAddress - layout.heapBaseAddress) / 8)
+	return [
+		{ id: 'text', label: '.text', start: layout.textBaseAddress, end: layout.textLimitAddress },
+		{ id: 'data', label: '.data', start: layout.dataBaseAddress, end: layout.heapBaseAddress - 4 },
+		{ id: 'heap', label: 'heap', start: layout.heapBaseAddress, end: stackStart - 4 },
+		{ id: 'stack', label: 'stack', start: stackStart, end: layout.stackBaseAddress },
+		{ id: 'kdata', label: 'kernel', start: layout.kernelBaseAddress, end: layout.memoryMapBaseAddress - 4 },
+		{ id: 'mmio', label: 'MMIO', start: layout.memoryMapBaseAddress, end: word(layout.memoryMapLimitAddress) },
+	]
+}
 
 const GROUP_SIZES = [1, 2, 4, 8]
 const ROW_HEIGHT = 18
@@ -41,7 +64,8 @@ const OVERSCAN_ROWS = 6
 
 const formatAddress = formatWord
 
-const sectionForAddress = (address: number) => SECTIONS.find((section) => address >= section.start && address <= section.end)
+const sectionForAddress = (sections: MemorySection[], address: number) =>
+	sections.find((section) => address >= section.start && address <= section.end)
 
 /** Little-endian byte read against the word-indexed memory view. */
 const byteAt = (memory: Memory, address: number) => {
@@ -49,7 +73,66 @@ const byteAt = (memory: Memory, address: number) => {
 	return (word >>> ((address & 3) * 8)) & 0xff
 }
 
-const toPrintable = (byte: number) => (byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.')
+const isPrintable = (byte: number) => byte >= 0x20 && byte <= 0x7e
+
+/**
+ * A byte that cannot be printed is named by what it does, not by its letters:
+ * the arrows say which way the cursor moves, the bell is a bell.  Codes with no
+ * such convention fall back to the Control Pictures block, which at least spells
+ * the mnemonic.  Everything here is chosen to sit in a monospace column.
+ */
+const NAMED_ICONS: Record<number, string> = {
+	// NUL fills whole pages of untouched memory, so it gets the quietest mark
+	// there is: anything with more ink turns a zeroed region into noise.
+	0x00: '·',
+	0x07: '⍾', // BEL, bell symbol
+	0x08: '⌫', // BS, erase to the left
+	0x09: '⇥', // TAB, arrow to bar
+	0x0a: '↓', // LF, down
+	0x0b: '↧', // VT, down from bar
+	0x0c: '⇟', // FF, page down
+	0x0d: '↤', // CR, left to bar
+	0x1b: '⎋', // ESC
+	0x7f: '⌦', // DEL, erase to the right
+}
+
+/** The C0 names, in code order, so a control byte can be read out by name. */
+const CONTROL_NAMES = [
+	'NUL', 'SOH', 'STX', 'ETX', 'EOT', 'ENQ', 'ACK', 'BEL',
+	'BS', 'TAB', 'LF', 'VT', 'FF', 'CR', 'SO', 'SI',
+	'DLE', 'DC1', 'DC2', 'DC3', 'DC4', 'NAK', 'SYN', 'ETB',
+	'CAN', 'EM', 'SUB', 'ESC', 'FS', 'GS', 'RS', 'US',
+]
+
+/**
+ * What to call a byte in the tooltip.  A control code has a name worth more
+ * than its glyph, the high half has none, and a space is easy to mistake for
+ * nothing at all.
+ */
+export function asciiName(byte: number): string | null {
+	if (byte < CONTROL_NAMES.length) return CONTROL_NAMES[byte]
+	if (byte === 0x20) return 'SP'
+	if (byte === 0x7f) return 'DEL'
+	return null
+}
+
+export function toIcon(byte: number): string {
+	const named = NAMED_ICONS[byte]
+	if (named !== undefined) return named
+	// The C0 codes all have a picture; nothing names the high half.
+	if (byte <= 0x1f) return String.fromCharCode(0x2400 + byte)
+	return '▯'
+}
+
+const toPrintable = (byte: number, icons: boolean) =>
+	isPrintable(byte) ? String.fromCharCode(byte) : icons ? toIcon(byte) : '.'
+
+/** A single byte reads as its character, or as its name beside the icon for it. */
+function describeByte(byte: number): string {
+	const name = asciiName(byte)
+	if (name === null) return isPrintable(byte) ? `'${String.fromCharCode(byte)}'` : toIcon(byte)
+	return isPrintable(byte) ? `'${String.fromCharCode(byte)}' ${name}` : `${name} (${toIcon(byte)})`
+}
 
 const toHex = (byte: number) => formatHex(byte, 2)
 
@@ -65,16 +148,20 @@ interface MemoryByte { address: number, value: number }
 interface MemoryGroup { start: number, bytes: MemoryByte[], zero: boolean, leadingZeros: number, value: number | null }
 interface MemoryRowData { address: number, groups: MemoryGroup[], bytes: MemoryByte[] }
 
-const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSize, showAscii, hover, pc, returnAddresses }: {
+const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSize, showAscii, showIcons, hexDimming, hover, pc, returnAddresses, editable, onEditWord }: {
 	row: MemoryRowData
 	top: number
 	left: number
 	width: number
 	groupSize: number
 	showAscii: boolean
+	showIcons: boolean
+	hexDimming: HexDimming
 	hover: HoverRange | null
 	pc: number | null
 	returnAddresses: Set<number>
+	editable: boolean
+	onEditWord?: (address: number, value: number) => boolean
 }) {
 	const isHovered = (address: number) => hover !== null && address >= hover.start && address < hover.start + hover.size
 
@@ -82,9 +169,22 @@ const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSi
 		<div className="memory-row" style={{ top, left, width }}>
 			<span className="memory-row-address"><HexNumber text={formatAddress(row.address)} /></span>
 			<span className="memory-row-groups">
-				{row.groups.map((group, groupIndex) => (
-					<span
+				{row.groups.map((group, groupIndex) => {
+					const digits = group.bytes.length * 2
+					// A word is what the machine writes, so only a four-byte group is
+					// a cell an edit can land in whole.
+					const writable = editable && onEditWord !== undefined && groupSize === 4 && group.start % 4 === 0
+					const groupText = [...group.bytes].reverse().map((byte) => toHex(byte.value)).join('')
+					return (
+					<EditableCell
 						key={groupIndex}
+						text={groupText}
+						title={`${formatAddress(group.start)}`}
+						editable={writable}
+						onCommit={(typed) => {
+							const value = parseEditedValue(typed, '0x')
+							return value !== null && (onEditWord?.(group.start, value) ?? false)
+						}}
 						className={[
 							'memory-group',
 							group.zero ? 'zero' : '',
@@ -92,14 +192,15 @@ const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSi
 							returnAddresses.has(group.start) ? 'return-address' : '',
 							group.value !== null && returnAddresses.has(group.value) ? 'return-slot' : '',
 						].filter(Boolean).join(' ')}
-						data-address={group.start}
-						data-size={groupSize}
 					>
 						{/* Little-endian: the highest address is the most significant digit pair. */}
 						{[...group.bytes].reverse().map((byte, byteIndex) => {
 							const text = toHex(byte.value)
-							// Leading zeros of the whole group dim, across byte boundaries.
-							const dimmed = Math.min(2, Math.max(0, group.leadingZeros - byteIndex * 2))
+							// The group is one number, so its leading zeros dim across byte
+							// boundaries; how many of them dim is the workspace's setting,
+							// applied here rather than baked into the row data.
+							const dimTotal = dimmedDigits(group.leadingZeros, digits, hexDimming)
+							const dimmed = Math.min(2, Math.max(0, dimTotal - byteIndex * 2))
 							return (
 								<span key={byteIndex} className={`memory-byte ${isHovered(byte.address) ? 'hovered' : ''}`}>
 									{dimmed > 0 && <span className="hex-zero">{text.slice(0, dimmed)}</span>}
@@ -107,19 +208,20 @@ const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSi
 								</span>
 							)
 						})}
-					</span>
-				))}
+					</EditableCell>
+					)
+				})}
 			</span>
 			{showAscii && (
 				<span className="memory-row-ascii">
 					{row.bytes.map((byte, byteIndex) => (
 						<span
 							key={byteIndex}
-							className={`memory-char ${isHovered(byte.address) ? 'hovered' : ''}`}
+							className={`memory-char ${isPrintable(byte.value) ? '' : showIcons ? 'icon' : 'unprintable'} ${isHovered(byte.address) ? 'hovered' : ''}`}
 							data-address={byte.address}
 							data-size={1}
 						>
-							{toPrintable(byte.value)}
+							{toPrintable(byte.value, showIcons)}
 						</span>
 					))}
 				</span>
@@ -128,14 +230,18 @@ const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSi
 	)
 })
 
-function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress }: MemoryViewProps) {
-	const [addressInput, setAddressInput] = React.useState(formatAddress(TEXT_SECTION.start))
-	const [sectionId, setSectionId] = useStoredState('memory.section', TEXT_SECTION.id, isOneOf(SECTIONS.map((entry) => entry.id)))
+function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 0, editable = false, onEditWord, onHoverAddress }: MemoryViewProps) {
+	const memoryConfiguration = useTHRAXStore((state) => state.settings.memoryConfiguration)
+	const sections = React.useMemo(() => sectionsFor(MEMORY_CONFIGURATIONS[memoryConfiguration]), [memoryConfiguration])
+	const textSection = sections[0]
+	const [addressInput, setAddressInput] = React.useState(formatAddress(textSection.start))
+	const [sectionId, setSectionId] = useStoredState('memory.section', SECTION_IDS[0], isOneOf(SECTION_IDS))
 	const [groupSize, setGroupSize] = useStoredState('memory.groupSize', 4, isOneOf(GROUP_SIZES))
-	const [rowOptions, setRowOptions] = useStoredState('memory.rows', { powerOfTwo: true, ascii: true }, isFlagSet(['powerOfTwo', 'ascii']))
-	const { ascii: showAscii, powerOfTwo: powerOfTwoRows } = rowOptions
+	const hexDimming = useTHRAXStore((state) => state.settings.hexDimming)
+	const [rowOptions, setRowOptions] = useStoredState('memory.rows', { powerOfTwo: true, ascii: true, icons: false }, isFlagSet(['powerOfTwo', 'ascii', 'icons']))
+	const { ascii: showAscii, icons: showIcons, powerOfTwo: powerOfTwoRows } = rowOptions
 	const [addressError, setAddressError] = React.useState<string | null>(null)
-	const [windowStart, setWindowStart] = React.useState(TEXT_SECTION.start)
+	const [windowStart, setWindowStart] = React.useState(textSection.start)
 	const [pendingReveal, setPendingReveal] = React.useState<number | null>(null)
 	const [scrollTop, setScrollTop] = React.useState(0)
 	const [viewport, setViewport] = React.useState({ width: 0, height: 0 })
@@ -144,11 +250,11 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress 
 	const [frame, setFrame] = React.useState({ top: 0, left: 0, width: 0 })
 	const [layoutTick, setLayoutTick] = React.useState(0)
 	const scrollRef = React.useRef<HTMLDivElement>(null)
-	const focusedRef = React.useRef<number | null>(null)
+	const focusedRef = React.useRef<string | null>(null)
 	const originRef = React.useRef<HTMLSpanElement>(null)
 	const probeRef = React.useRef<HTMLSpanElement>(null)
 
-	const section = SECTIONS.find((entry) => entry.id === sectionId) ?? SECTIONS[0]
+	const section = sections.find((entry) => entry.id === sectionId) ?? sections[0]
 
 	React.useLayoutEffect(() => {
 		const width = probeRef.current?.getBoundingClientRect().width
@@ -233,7 +339,7 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress 
 	// Anchors the window at the section start whenever the address is near it, so
 	// the rows above stay reachable, and only re-anchors for a distant address.
 	const revealAddress = React.useCallback((address: number) => {
-		const target = sectionForAddress(address)
+		const target = sectionForAddress(sections, address)
 		if (!target) return false
 		const span = MAX_WINDOW_ROWS * bytesPerRow
 		setAddressError(null)
@@ -244,16 +350,18 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress 
 		return true
 	}, [bytesPerRow])
 
-	// A selected call stack frame brings its return address into view.
+	// A selected call stack frame, a symbol or a history row brings an address
+	// into view.
 	React.useEffect(() => {
 		if (focusAddress === null) {
 			focusedRef.current = null
 			return
 		}
-		if (focusAddress === focusedRef.current) return
-		focusedRef.current = focusAddress
+		const asked = `${focusRequest}:${focusAddress}`
+		if (asked === focusedRef.current) return
+		focusedRef.current = asked
 		revealAddress(focusAddress)
-	}, [focusAddress, revealAddress])
+	}, [focusAddress, focusRequest, revealAddress])
 
 	// Scrolls to a revealed address once the window that contains it is in place.
 	React.useEffect(() => {
@@ -298,7 +406,7 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress 
 		if (hover && hover.start === start && hover.size === size) return
 		const rect = target.getBoundingClientRect()
 		setHover({ start, size, rect: { left: rect.left, top: rect.top, bottom: rect.bottom } })
-		onHoverAddress(size === 4 && start >= TEXT_SECTION.start && start <= TEXT_SECTION.end ? start : null)
+		onHoverAddress(size === 4 && start >= textSection.start && start <= textSection.end ? start : null)
 	}
 
 	const clearHover = () => {
@@ -314,19 +422,19 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress 
 		const range = hover.size > 1
 			? `${formatAddress(hover.start)} - ${formatAddress(hover.start + hover.size - 1)}`
 			: formatAddress(hover.start)
-		const text = bytes.map(toPrintable).join('')
+		const text = bytes.map((byte) => toPrintable(byte, showIcons)).join('')
 		// Words in .text decode to an instruction; other widths and sections do not.
-		const inText = hover.start >= TEXT_SECTION.start && hover.start <= TEXT_SECTION.end
+		const inText = hover.start >= textSection.start && hover.start <= textSection.end
 		const assembly = hover.size === 4 && inText ? disassemble(Number(value), hover.start) : null
 		return {
 			range,
 			hex: `0x${[...bytes].reverse().map(toHex).join('')}`,
 			unsigned: value.toString(),
 			signed: signed === value ? null : signed.toString(),
-			ascii: hover.size > 1 ? `"${text}"` : `'${text}'`,
+			ascii: hover.size > 1 ? `"${text}"` : describeByte(bytes[0]),
 			assembly,
 		}
-	}, [hover, memory])
+	}, [hover, memory, showIcons])
 
 	const showSection = (target: MemorySection) => {
 		setAddressError(null)
@@ -350,7 +458,7 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress 
 			<span className="memory-probe" ref={probeRef}>00000000000000000000</span>
 
 			<div className="memory-sections">
-				{SECTIONS.map((entry) => (
+				{sections.map((entry) => (
 					<button
 						key={entry.id}
 						className={`memory-section ${entry.id === section.id ? 'active' : ''}`}
@@ -394,6 +502,14 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress 
 					>
 						ascii
 					</button>
+					<button
+						className={`memory-toggle ${showIcons ? 'active' : ''}`}
+						title="Name each non-printing byte with its own glyph"
+						disabled={!showAscii}
+						onClick={(event) => setRowOptions((current) => nextToggles(current, 'icons', event))}
+					>
+						icons
+					</button>
 				</div>
 				<input
 					className="memory-address-input"
@@ -424,6 +540,10 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress 
 								width={frame.width}
 								groupSize={groupSize}
 								showAscii={showAscii}
+								editable={editable}
+								onEditWord={onEditWord}
+								showIcons={showIcons}
+								hexDimming={hexDimming}
 								pc={groupSize === 4 ? pc : null}
 								returnAddresses={returnAddresses}
 								hover={hover && hover.start >= row.address && hover.start < row.address + bytesPerRow ? hover : null}
@@ -441,7 +561,7 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, onHoverAddress 
 						: { left: hover.rect.left, top: hover.rect.top - 4, transform: 'translateY(-100%)' }}
 				>
 					<div className="memory-tooltip-range">{tooltip.range}</div>
-					<div><span>hex</span><HexNumber text={tooltip.hex} /></div>
+					<div><span>hex</span><HexNumber text={tooltip.hex} mode="off" /></div>
 					<div><span>dec</span>{tooltip.unsigned}</div>
 					{tooltip.signed && <div><span>signed</span>{tooltip.signed}</div>}
 					<div><span>ascii</span>{tooltip.ascii}</div>

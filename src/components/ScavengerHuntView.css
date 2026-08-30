@@ -1,0 +1,36 @@
+.scavenger-hunt-board {
+	flex: 1;
+	min-height: 200px;
+	width: 100%;
+	background: var(--surface-raised);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.scavenger-hunt-location rect {
+	fill: #3b82f6;
+}
+
+.scavenger-hunt-location text {
+	fill: #fff;
+	font-size: 10px;
+}
+
+.scavenger-hunt-player circle {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	vector-effect: non-scaling-stroke;
+}
+
+.scavenger-hunt-player text {
+	fill: var(--text-primary);
+	font-size: 9px;
+}
+
+.scavenger-hunt-scoreboard {
+	max-height: 220px;
+	overflow: auto;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}

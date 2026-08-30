@@ -2,6 +2,7 @@ import React from 'react'
 import { DEFAULT_GUTTER_COLUMNS, RUN_SPEEDS, useTHRAXStore } from '../store/thraxStore'
 import { AddressIcon, CodeBytesIcon, DisassemblyIcon, HeatLinesIcon, HeatMapIcon } from './icons'
 import { nextToggles } from './toggleGroup'
+import SettingsDialog from './SettingsDialog'
 import { openFindReplace } from '../services/findReplace'
 import './Toolbar.css'
 import { EXAMPLES } from '../examples'
@@ -12,8 +13,9 @@ interface ToolbarProps {
 }
 
 function Toolbar({ onRun, onReset }: ToolbarProps) {
-	const { assemble, assembleAllFiles, continue: continueExecution, createDocument, delayedBranching, exportHexText, gutterColumns, hasSavedProgram, heatMap, heatMapLines, isPaused, isRunning, loadProgram, pause, runSpeed, saveProgram, setAssembleAllFiles, setDelayedBranching, setGutterColumns, setHeatMap, setHeatMapLines, setRunSpeed, step, stepBack, stepOver, stepToReturn } = useTHRAXStore()
+	const { assemble, continue: continueExecution, createDocument, exportHexText, gutterColumns, hasSavedProgram, heatMap, heatMapLines, isPaused, isRunning, loadProgram, pause, runSpeed, saveProgram, setGutterColumns, setHeatMap, setHeatMapLines, setRunSpeed, step, stepBack, stepOver, stepToReturn } = useTHRAXStore()
 	const [showExamples, setShowExamples] = React.useState(false)
+	const [showSettings, setShowSettings] = React.useState(false)
 	const exampleMenuRef = React.useRef<HTMLDivElement>(null)
 	const [storageMessage, setStorageMessage] = React.useState<string | null>(null)
 
@@ -58,7 +60,7 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 	}
 
 	const handleExport = () => {
-		showStorageMessage(exportHexText() ? 'Downloaded THRAX HexText' : 'Unable to assemble HexText')
+		showStorageMessage(exportHexText() ? 'Downloaded HexText' : 'Unable to assemble HexText')
 	}
 
 	// The slider steps through the speed list, with the fastest notch unpaced.
@@ -116,23 +118,9 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 				Assemble
 			</button>
 
-			<label className="toolbar-toggle" title="Assemble every open tab as one program; the active tab holds the entry point">
-				<input
-					type="checkbox"
-					checked={assembleAllFiles}
-					onChange={(event) => setAssembleAllFiles(event.target.checked)}
-				/>
-				All files
-			</label>
-
-			<label className="toolbar-toggle" title="Run the instruction after a branch or jump before control transfers, as real MIPS hardware does">
-				<input
-					type="checkbox"
-					checked={delayedBranching}
-					onChange={(event) => setDelayedBranching(event.target.checked)}
-				/>
-				Delay slots
-			</label>
+			<button className="btn btn-icon" onClick={() => setShowSettings(true)} title="Settings">
+				⚙
+			</button>
 
 			<span className="toolbar-separator" />
 
@@ -235,10 +223,11 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 			<button className="btn btn-secondary" onClick={handleLoad} disabled={!hasSavedProgram} title="Load saved source tabs">
 				Load
 			</button>
-			<button className="btn btn-secondary" onClick={handleExport} title="Download THRAX HexText">
+			<button className="btn btn-secondary" onClick={handleExport} title="Download HexText">
 				Hex
 			</button>
 			{storageMessage && <span className="storage-message" role="status">{storageMessage}</span>}
+			{showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
 		</div>
 	)
 }

@@ -1,0 +1,110 @@
+.history-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	box-sizing: border-box;
+	font-family: 'Courier New', monospace;
+	font-size: 12px;
+}
+
+.history-scroll {
+	flex: 1;
+	overflow: auto;
+}
+
+.history-spacer {
+	position: relative;
+}
+
+.history-rows {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	will-change: transform;
+}
+
+.history-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 8px;
+	box-sizing: border-box;
+	white-space: nowrap;
+	cursor: default;
+}
+
+.history-row:hover {
+	background: rgba(127, 127, 127, 0.12);
+}
+
+.history-row.selected {
+	background: rgba(80, 140, 220, 0.22);
+}
+
+/* Ahead of the present: recorded, but not yet run again. */
+.history-row.ahead {
+	opacity: 0.45;
+}
+
+.history-row.edit .history-instruction {
+	font-style: italic;
+	opacity: 0.8;
+}
+
+.history-count {
+	width: 5em;
+	text-align: right;
+	opacity: 0.6;
+	flex: none;
+}
+
+.history-address,
+.history-chip {
+	background: none;
+	border: none;
+	padding: 0;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+}
+
+.history-address {
+	flex: none;
+}
+
+.history-address:hover,
+.history-chip:hover {
+	text-decoration: underline;
+}
+
+.history-source {
+	width: 12em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	opacity: 0.6;
+	flex: none;
+}
+
+.history-instruction {
+	width: 16em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	flex: none;
+}
+
+.history-effects {
+	display: flex;
+	gap: 8px;
+	overflow: hidden;
+	min-width: 0;
+}
+
+.history-chip {
+	opacity: 0.85;
+}
+
+.history-empty {
+	opacity: 0.6;
+	padding: 10px;
+}

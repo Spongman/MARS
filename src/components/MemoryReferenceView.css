@@ -1,0 +1,41 @@
+.memory-reference-address {
+	width: 84px;
+	font-family: var(--font-mono);
+}
+
+.memory-reference-grid {
+	display: grid;
+	gap: 1px;
+	background: var(--border);
+	border: 1px solid var(--border);
+	width: max-content;
+	max-width: 100%;
+	overflow: auto;
+}
+
+.memory-reference-cell {
+	width: 100%;
+	height: 100%;
+}
+
+.memory-reference-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	color: var(--text-secondary);
+	font-family: var(--font-mono);
+}
+
+.memory-reference-swatch {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.memory-reference-swatch-color {
+	width: 10px;
+	height: 10px;
+	border-radius: var(--radius);
+	border: 1px solid var(--border);
+	display: inline-block;
+}

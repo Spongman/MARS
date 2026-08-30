@@ -1,0 +1,23 @@
+.screen-magnifier-frame {
+	position: relative;
+	overflow: hidden;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface-raised);
+}
+
+.screen-magnifier-viewport {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+}
+
+.screen-magnifier-placeholder {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	padding: 0 12px;
+}

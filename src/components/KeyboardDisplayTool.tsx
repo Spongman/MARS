@@ -8,8 +8,8 @@ interface KeyboardDisplayToolProps {
 }
 
 /**
- * Browser counterpart to the original THRAX Keyboard and Display Simulator.
- * Programs use the standard MMIO words at 0xffff0000 through 0xffff000c.
+ * The Keyboard and Display Simulator: programs reach it through the MMIO words
+ * at 0xffff0000 through 0xffff000c.
  */
 function KeyboardDisplayTool({ device, onSend }: KeyboardDisplayToolProps) {
 	const [input, setInput] = React.useState('')

@@ -6,9 +6,19 @@ import type { CoprocessorState, Registers } from '../core/types'
 import { advanceOne, isSolo, nextToggles } from './toggleGroup'
 import FloatBitsView from './FloatBitsView'
 import HexNumber from './HexNumber'
+import EditableCell from './EditableCell'
+import { parseEditedDouble, parseEditedValue } from './editValue'
 import { isOneOf, useStoredState } from '../hooks/useStoredState'
 
-interface RegisterViewProps extends CoprocessorState { registers: Registers }
+interface RegisterViewProps extends CoprocessorState {
+	registers: Registers
+	/**
+	 * Writes an entry's raw bits.  Absent, or returning false, leaves the cell
+	 * read-only: `$zero` is hardwired and a running program owns its own state.
+	 */
+	onEdit?: (entry: RegisterEntry, bits: number, high?: number) => boolean
+	editable?: boolean
+}
 
 type RegisterTab = 'registers' | 'coproc1' | 'coproc0'
 
@@ -115,7 +125,7 @@ const formatBits = (format: Format, entry: RegisterEntry) => {
 	}
 }
 
-function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect }: {
+function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect, onEdit, editable = false }: {
 	title: string
 	entries: RegisterEntry[]
 	flags: FormatFlags
@@ -123,6 +133,8 @@ function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect }: 
 	/** Name of the entry whose bits are being inspected, where that is offered. */
 	selected?: string
 	onSelect?: (name: string) => void
+	onEdit?: (entry: RegisterEntry, bits: number, high?: number) => boolean
+	editable?: boolean
 }) {
 	const available = formatsFor(title)
 	const formats = activeFormats(title, flags)
@@ -167,10 +179,29 @@ function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect }: 
 						<span className="reg-name">{entry.name}</span>
 						{formats.map((format) => {
 							const text = formatBits(format, entry)
+							const shown = format === '0x' ? <HexNumber text={text} /> : text
+							// `$zero` reads as zero however it is written, so offering
+							// to edit it would only mislead.
+							const writable = editable && onEdit !== undefined && entry.name !== '$zero' && !(format === 'd' && entry.highBits === undefined)
 							return (
-								<span key={format} className="reg-value" title={text}>
-									{format === '0x' ? <HexNumber text={text} /> : text}
-								</span>
+								<EditableCell
+									key={format}
+									className="reg-value"
+									text={text}
+									title={text}
+									editable={writable}
+									onCommit={(typed) => {
+										if (!onEdit) return false
+										if (format === 'd') {
+											const pair = parseEditedDouble(typed)
+											return pair !== null && onEdit(entry, pair.low, pair.high)
+										}
+										const bits = parseEditedValue(typed, format)
+										return bits !== null && onEdit(entry, bits)
+									}}
+								>
+									{shown}
+								</EditableCell>
 							)
 						})}
 					</div>
@@ -180,7 +211,7 @@ function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect }: 
 	)
 }
 
-function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers }: RegisterViewProps) {
+function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers, onEdit, editable = false }: RegisterViewProps) {
 	const [tab, setTab] = useStoredState<RegisterTab>('registers.tab', 'registers', isOneOf(TABS.map((item) => item.id)))
 	const [panelFormats, setPanelFormats] = useStoredState('registers.formats', INITIAL_PANEL_FORMATS, isPanelFormats)
 	/** Index of the CP1 register whose IEEE-754 fields are shown, if any. */
@@ -229,6 +260,8 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers }
 					title={group}
 					flags={panelFormats[group]}
 					onToggle={handleToggle}
+					onEdit={onEdit}
+					editable={editable}
 					entries={names.map((name, index) => ({
 						name,
 						bits: registers[name] || 0,
@@ -255,6 +288,8 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers }
 						title={FLOATING_POINT}
 						flags={panelFormats[FLOATING_POINT]}
 						onToggle={handleToggle}
+						onEdit={onEdit}
+						editable={editable}
 						selected={selectedFp === null ? undefined : `$f${selectedFp}`}
 						onSelect={(name) => {
 							const index = Number(name.slice(2))
@@ -273,7 +308,12 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers }
 								<span>{`$f${selectedFp}${fpDouble ? `/$f${selectedFp + 1}` : ''} bits`}</span>
 								<button className="format-toggle" title="Clear selection" onClick={() => setSelectedRegister(null)}>×</button>
 							</div>
-							<FloatBitsView bits={fpRegisters[selectedFp] >>> 0} highBits={fpDouble ? fpRegisters[selectedFp + 1] >>> 0 : undefined} />
+							<FloatBitsView
+								bits={fpRegisters[selectedFp] >>> 0}
+								highBits={fpDouble ? fpRegisters[selectedFp + 1] >>> 0 : undefined}
+								editable={editable}
+								onEdit={onEdit && ((bits, high) => onEdit({ name: `$f${selectedFp}`, bits }, bits, high))}
+							/>
 						</div>
 					)}
 				</>
@@ -284,6 +324,8 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers }
 					title={SYSTEM_CONTROL}
 					flags={panelFormats[SYSTEM_CONTROL]}
 					onToggle={handleToggle}
+					onEdit={onEdit}
+					editable={editable}
 					entries={CP0_REGISTERS.map(({ index, name }) => ({ name, bits: cp0Registers[index] || 0 }))}
 				/>
 			)}

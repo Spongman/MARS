@@ -1,12 +1,20 @@
 import { bitsToDouble, bitsToSingle, formatDouble, formatSingle } from '../core/coprocessor'
 import { formatHex, formatWord } from '../core/format'
 import './ToolPanels.css'
+import EditableCell from './EditableCell'
+import { parseEditedDouble, parseEditedValue } from './editValue'
 
 interface Props {
 	/** The raw word of the register being inspected, or the low word of a pair. */
 	bits: number
 	/** High word of the pair, which makes this a double-precision reading. */
 	highBits?: number
+	/**
+	 * Writes the register back.  Absent, the panel is a reading of the register
+	 * rather than a way into it, which is what it is while a program runs.
+	 */
+	onEdit?: (bits: number, high?: number) => boolean
+	editable?: boolean
 }
 
 const binary = (value: number, width: number) => (value >>> 0).toString(2).padStart(width, '0')
@@ -19,7 +27,7 @@ function describe(exponent: number, zeroFraction: boolean, reserved: number, bia
 }
 
 /** The IEEE-754 fields of one register, or of the pair holding a double. */
-function FloatBitsView({ bits: word, highBits }: Props) {
+function FloatBitsView({ bits: word, highBits, onEdit, editable = false }: Props) {
 	const double = highBits !== undefined
 	// A double keeps its sign, exponent and the top of its fraction in the odd
 	// register of the pair, and the rest of the fraction in the even one.
@@ -31,16 +39,43 @@ function FloatBitsView({ bits: word, highBits }: Props) {
 	const zeroFraction = fractionHigh === 0 && fractionLow === 0
 	// Both scales are exact powers of two, so the significand divides out whole.
 	const significand = (fractionHigh * (double ? 0x100000000 : 1) + fractionLow) / (double ? 2 ** 52 : 0x800000)
+	const writable = editable && onEdit !== undefined
 
 	return (
 		<div className="tool float-bits">
 			<div className="tool-headline">
 				<div className="tool-metric">
-					<span className="tool-metric-value">{double ? formatDouble(bitsToDouble(word, high)) : formatSingle(bitsToSingle(word))}</span>
+					<EditableCell
+						className="tool-metric-value"
+						text={double ? formatDouble(bitsToDouble(word, high)) : formatSingle(bitsToSingle(word))}
+						editable={writable}
+						onCommit={(typed) => {
+							if (!onEdit) return false
+							if (double) {
+								const pair = parseEditedDouble(typed)
+								return pair !== null && onEdit(pair.low, pair.high)
+							}
+							const value = parseEditedValue(typed, 'f')
+							return value !== null && onEdit(value)
+						}}
+					>
+						{double ? formatDouble(bitsToDouble(word, high)) : formatSingle(bitsToSingle(word))}
+					</EditableCell>
 					<span className="tool-metric-label">{double ? 'Double-precision value' : 'Single-precision value'}</span>
 				</div>
 				<div className="tool-metric">
-					<span className="tool-metric-value">{double ? `${formatWord(high)} ${formatWord(word)}` : formatWord(word)}</span>
+					{/* A double is two words, so only the single form is one cell. */}
+					<EditableCell
+						className="tool-metric-value"
+						text={double ? `${formatWord(high)} ${formatWord(word)}` : formatWord(word)}
+						editable={writable && !double}
+						onCommit={(typed) => {
+							const value = parseEditedValue(typed, '0x')
+							return value !== null && (onEdit?.(value) ?? false)
+						}}
+					>
+						{double ? `${formatWord(high)} ${formatWord(word)}` : formatWord(word)}
+					</EditableCell>
 					<span className="tool-metric-label">Bit pattern</span>
 				</div>
 			</div>

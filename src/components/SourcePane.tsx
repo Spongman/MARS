@@ -1,7 +1,6 @@
 import React from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
-import { EMPTY_SOURCE_INDEX } from '../core/sourceIndex'
 import type { CodeWord } from '../core/types'
 import { formatHex, formatWord, formatWordDigits } from '../core/format'
 import { disassemble, disassembleData } from '../core/disassembler'
@@ -14,9 +13,9 @@ import './SourcePane.css'
 /** Gutter columns are separated, and closed off, by two spaces. */
 const COLUMN_GAP = '  '
 
-/** Only the file being assembled has machine words and a program counter. */
+/** A file that assembled to nothing has no machine words and no breakpoints. */
 const NO_CODE_WORDS = new Map<number, CodeWord[]>()
-const NO_LINES = new Set<number>()
+const NO_LINES: ReadonlySet<number> = new Set<number>()
 
 /**
  * Data tips read the live store, so one provider serves every open editor: a
@@ -37,24 +36,25 @@ interface SourcePaneProps {
 
 function SourcePane({ documentId }: SourcePaneProps) {
 	const store = useTHRAXStore()
-	const { activeDocumentId, branchHistory, breakpoints, callStack, documents, gutterColumns, heatMap: showHeatMap, heatMapLines: showHeatLines, hoveredAddress, pipeline, profile, selectedFrame, setBreakpointLines, setDocumentCode, toggleBreakpointAddress, toggleBreakpointLine } = store
-	// Everything the debugger marks up belongs to the file being assembled, so
-	// the other editors show their own text and none of its decorations.
-	const isEntryFile = documentId === activeDocumentId
+	const { activeDocumentId, branchHistory, breakpoints, callStack, documents, entryDocumentId, gutterColumns, heatMap: showHeatMap, heatMapLines: showHeatLines, hoveredAddress, pipeline, profile, selectedFrame, setBreakpointLines, setDocumentCode, toggleBreakpointAddress, toggleBreakpointLine } = store
+	// Bug 12: every editor marks up its own file.  The keyboard and the find
+	// widget still belong to the tab in front of the user, and a diagnostic with
+	// no file of its own to the entry file the assembler started from.
+	const isActiveFile = documentId === activeDocumentId
+	const isEntryFile = documentId === entryDocumentId
 	const sourceDocument = documents.find((candidate) => candidate.id === documentId)
 	const code = sourceDocument?.code ?? ''
 	const title = sourceDocument?.title ?? ''
-	// A diagnostic names the file it came from; an unnamed one belongs to the
-	// file being assembled, which is the only one the assembler was given.
 	const diagnostics = React.useMemo(
 		() => store.diagnostics.filter((diagnostic) => diagnostic.file ? diagnostic.file === title : isEntryFile),
 		[store.diagnostics, isEntryFile, title],
 	)
-	const codeWords = isEntryFile ? store.codeWords : NO_CODE_WORDS
-	// Queried for this file alone, so the other editors resolve nothing.
-	const sourceIndex = isEntryFile ? store.sourceIndex : EMPTY_SOURCE_INDEX
-	const breakpointLines = isEntryFile ? store.breakpointLines : NO_LINES
-	const pc = isEntryFile ? store.pc : -1
+	// Every lookup names this file, so each editor shows the words, breakpoints
+	// and execution pointer of the file it is holding.
+	const codeWords = store.codeWords.get(title) ?? NO_CODE_WORDS
+	const sourceIndex = store.sourceIndex
+	const breakpointLines = store.breakpointLines.get(title) ?? NO_LINES
+	const pc = store.pc
 	const { address: showAddresses, code: showCodeBytes, disassembly: showDisassembly } = gutterColumns
 	const editorRef = React.useRef<editor.IStandaloneCodeEditor | null>(null)
 	const monacoRef = React.useRef<Parameters<OnMount>[1] | null>(null)
@@ -72,23 +72,27 @@ function SourcePane({ documentId }: SourcePaneProps) {
 	const setBreakpointLinesRef = React.useRef(setBreakpointLines)
 	const breakpointLinesRef = React.useRef(breakpointLines)
 	const copiedBreakpointLinesRef = React.useRef<{ text: string, relativeLines: number[] } | null>(null)
-	const isEntryFileRef = React.useRef(isEntryFile)
+	const isActiveFileRef = React.useRef(isActiveFile)
+	const titleRef = React.useRef(title)
 
 	toggleBreakpointLineRef.current = toggleBreakpointLine
 	toggleBreakpointAddressRef.current = toggleBreakpointAddress
 	setBreakpointLinesRef.current = setBreakpointLines
 	breakpointLinesRef.current = breakpointLines
-	isEntryFileRef.current = isEntryFile
+	isActiveFileRef.current = isActiveFile
+	titleRef.current = title
 
 	const handleEditorMount: OnMount = React.useCallback((editorInstance, monaco) => {
 		editorRef.current = editorInstance
 		monacoRef.current = monaco
-		if (isEntryFileRef.current) setFindReplaceEditor(editorInstance)
+		if (isActiveFileRef.current) setFindReplaceEditor(editorInstance)
 		if (!dataTipsRegistered) {
 			dataTipsRegistered = true
+			// The provider reads the model it was asked about, so a hover answers
+			// for the file under the pointer rather than for the entry file.
 			registerMipsDebugDataTips(monaco, () => {
-				const { code, registers, memory, fpRegisters } = useTHRAXStore.getState()
-				return { code, registers, memory, fpRegisters }
+				const { registers, memory, fpRegisters, labels } = useTHRAXStore.getState()
+				return { registers, memory, fpRegisters, labels }
 			})
 		}
 		const editorDomNode = editorInstance.getDomNode()
@@ -113,20 +117,18 @@ function SourcePane({ documentId }: SourcePaneProps) {
 			if (event.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return
 			const line = event.target.position?.lineNumber
 			if (!line) return
-			toggleBreakpointLineRef.current(line)
+			toggleBreakpointLineRef.current(titleRef.current, line)
 		})
-		// Breakpoints belong to the file being assembled, so an edit elsewhere
-		// must not report that file's lines as having moved.
+		// Each editor reports where its own file's markers moved to.
 		editorInstance.onDidChangeModelContent(() => {
 			const model = editorInstance.getModel()
-			if (!model || !isEntryFileRef.current) return
+			if (!model) return
 			const movedLines = breakpointDecorationIds.current
 				.map((id) => model.getDecorationRange(id)?.startLineNumber)
 				.filter((line): line is number => line !== undefined)
-			setBreakpointLinesRef.current(movedLines)
+			setBreakpointLinesRef.current(titleRef.current, movedLines)
 		})
 		editorInstance.onDidPaste((event) => {
-			if (!isEntryFileRef.current) return
 			const plainText = event.clipboardEvent?.clipboardData?.getData('text/plain') ?? ''
 			const encoded = event.clipboardEvent?.clipboardData?.getData('application/x-thrax-breakpoints')
 			let copied = copiedBreakpointLinesRef.current
@@ -147,30 +149,30 @@ function SourcePane({ documentId }: SourcePaneProps) {
 			if (!copied || (plainText && plainText !== copied.text)) return
 			const nextLines = new Set(breakpointLinesRef.current)
 			for (const relativeLine of copied.relativeLines) nextLines.add(event.range.startLineNumber + relativeLine)
-			setBreakpointLinesRef.current(nextLines)
+			setBreakpointLinesRef.current(titleRef.current, nextLines)
 		})
 		editorInstance.onDidDispose(() => editorDomNode?.removeEventListener('copy', captureBreakpointCopy))
 	}, [])
 
-	// The toolbar's Find opens Monaco's find widget on the assembled file, so
-	// this editor claims it for as long as it holds that file.
+	// The toolbar's Find opens Monaco's find widget on the file in front of the
+	// user, so this editor claims it for as long as it is the one showing.
 	React.useEffect(() => {
-		if (!isEntryFile) return
+		if (!isActiveFile) return
 		setFindReplaceEditor(editorRef.current)
 		return () => setFindReplaceEditor(null)
-	}, [isEntryFile])
+	}, [isActiveFile])
 
 	// Debugger keys, captured before Monaco claims F8 and friends.  Only the
-	// editor holding the assembled program listens, so one press steps once.
+	// editor in front of the user listens, so one press steps once.
 	React.useEffect(() => {
-		if (!isEntryFile) return
+		if (!isActiveFile) return
 		const handler = (event: KeyboardEvent) => {
 			if (!/^F(5|7|8|9|10)$/.test(event.key) || event.repeat) return
 			const store = useTHRAXStore.getState()
 			const line = editorRef.current?.getPosition()?.lineNumber
 			// Blank and comment lines carry no address, so aim at the next line that does.
 			const addressAt = (from?: number) =>
-				from === undefined ? undefined : store.sourceIndex.codeAddressAtOrAfter(store.sourceIndex.entryFile, from)
+				from === undefined ? undefined : store.sourceIndex.codeAddressAtOrAfter(title, from)
 
 			switch (event.key) {
 				case 'F5':
@@ -199,7 +201,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 					store.step()
 					break
 				case 'F9':
-					if (line !== undefined) store.toggleBreakpointLine(line)
+					if (line !== undefined) store.toggleBreakpointLine(title, line)
 					break
 				case 'F10':
 					void store.stepOver()
@@ -210,7 +212,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		}
 		window.addEventListener('keydown', handler, true)
 		return () => window.removeEventListener('keydown', handler, true)
-	}, [isEntryFile])
+	}, [isActiveFile, title])
 
 	// Machine words only reach the gutter when at least one column is turned on.
 	const showGutter = codeWords.size > 0 && (showAddresses || showCodeBytes || showDisassembly)
@@ -227,7 +229,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		const lineAt = (address: number | null) => {
 			if (address === null) return undefined
 			const location = sourceIndex.lineForAddress(address)
-			return location?.file === sourceIndex.entryFile ? location.line : undefined
+			return location?.file === title ? location.line : undefined
 		}
 		const breakpointDecorations: editor.IModelDeltaDecoration[] = [...breakpointLines]
 			.map((line) => ({
@@ -244,7 +246,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		const currentLine = lineAt(pc)
 		// A pseudo-instruction's later words own their own gutter row, which carries
 		// the pointer itself; the source line keeps it only when no such row shows.
-		const firstAddress = currentLine === undefined ? undefined : sourceIndex.addressesForLine(sourceIndex.entryFile, currentLine)[0]
+		const firstAddress = currentLine === undefined ? undefined : sourceIndex.addressesForLine(title, currentLine)[0]
 		const onGutterRow = showWordRows && firstAddress !== undefined && firstAddress !== pc
 		if (currentLine !== undefined && !onGutterRow) {
 			executionDecorations.push({
@@ -291,7 +293,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 			const line = lineAt(selectedAddress)
 			if (line !== undefined) editorInstance.revealLineInCenterIfOutsideViewport(line)
 		}
-	}, [breakpointLines, breakpoints, callStack, hoveredAddress, pc, selectedFrame, showWordRows, sourceIndex])
+	}, [breakpointLines, breakpoints, callStack, hoveredAddress, pc, selectedFrame, showWordRows, sourceIndex, title])
 
 	// Assembly diagnostics for this file, as squiggles under the offending text.
 	// An empty list clears them, so a fixed line stops being marked as the user types.
@@ -331,7 +333,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		revealedPc.current = pc
 
 		const location = sourceIndex.lineForAddress(pc)
-		if (location?.file !== sourceIndex.entryFile) return
+		if (location?.file !== title) return
 		const line = location.line
 		// A pseudo-instruction's later words sit in rows of their own below the line.
 		const row = showWordRows ? Math.max(0, sourceIndex.addressesForLine(location.file, line).indexOf(pc)) : 0
@@ -344,7 +346,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		const lowest = (height * 2) / 3 - lineHeight
 		if (offset >= highest && offset <= lowest) return
 		editorInstance.setScrollTop(Math.max(0, top - (offset < highest ? highest : lowest)))
-	}, [pc, showWordRows, sourceIndex])
+	}, [pc, showWordRows, sourceIndex, title])
 
 	// Execution counts, as a heat map over the line numbers and a hover that
 	// reports what the profile, the branch predictor and the pipeline model saw

@@ -10,7 +10,7 @@ interface Props {
 
 const ENTRY_COUNTS = [4, 8, 16, 32, 64]
 
-/** The saturating counter states, named as THRAX labels them. */
+/** The saturating counter states. */
 function stateLabel(state: number, historyBits: 1 | 2): string {
 	if (historyBits === 1) return state === 1 ? 'T' : 'N'
 	return ['NN', 'NT', 'TN', 'TT'][state] ?? '??'
