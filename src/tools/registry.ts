@@ -12,8 +12,12 @@ import type { ExecutionObserver, MachineConfig } from '../core/observer'
 import { readStoredSetting, writeStoredSetting } from '../hooks/useStoredState'
 import { BranchHistoryTable, DEFAULT_BHT_SETTINGS } from './branchHistory'
 import { CacheSimulator, DEFAULT_CACHE_SETTINGS } from './cache'
+import { MarsBot } from './marsBot'
+import { DigitalLabSim } from './digitalLab'
+import { DEFAULT_MEMORY_REFERENCE_SETTINGS, MemoryReferenceVisualizer, isMemoryReferenceSettings } from './memoryReference'
 import { DEFAULT_PIPELINE_SETTINGS, PipelineModel } from './pipeline'
 import { ExecutionProfile } from './profile'
+import { ScavengerHunt } from './scavengerHunt'
 import { InstructionStatistics } from './statistics'
 
 /** An observer that can also be read and, for some, configured. */
@@ -56,7 +60,7 @@ export type ToolSettings<E extends Entries> = {
 }
 
 /** Callbacks a tool is watched through, so a wrapper can forward them all. */
-const CALLBACKS: Array<keyof ExecutionObserver> = ['onInstruction', 'onMemoryRead', 'onMemoryWrite', 'onBranch', 'onReset', 'onConfigure']
+const CALLBACKS: Array<keyof ExecutionObserver> = ['onInstruction', 'onMemoryRead', 'onMemoryWrite', 'onBranch', 'onReset', 'onSeek', 'onConfigure']
 
 type Callback = (...args: never[]) => void
 
@@ -115,6 +119,14 @@ export class ToolRegistry<E extends Entries> {
 		for (const state of this.states) state.observer.onReset?.()
 	}
 
+	/**
+	 * The tool itself, for the few that are driven as well as watched: a device
+	 with a keypad has to be told a key was pressed.
+	 */
+	instance<Key extends E[number]['key']>(key: Key) {
+		return this.states.find((candidate) => candidate.entry.key === key)?.entry.tool
+	}
+
 	/** Configures one tool and remembers the choice. */
 	setSettings<Key extends keyof ToolSettings<E> & string>(key: Key, settings: ToolSettings<E>[Key]) {
 		const state = this.states.find((candidate) => candidate.entry.key === key)
@@ -159,6 +171,7 @@ export class ToolRegistry<E extends Entries> {
 const CACHE_SETTING = 'tools.cache'
 const BRANCH_HISTORY_SETTING = 'tools.branchHistory'
 const PIPELINE_SETTING = 'tools.pipeline'
+const MEMORY_REFERENCE_SETTING = 'tools.memoryReference'
 
 const isBoolean = (value: unknown) => typeof value === 'boolean'
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -198,5 +211,15 @@ export function createToolRegistry() {
 			tool: new PipelineModel(),
 			setting: { storageKey: PIPELINE_SETTING, defaults: DEFAULT_PIPELINE_SETTINGS, isValid: isPipelineSettings },
 		},
+		{
+			key: 'memoryReference',
+			tool: new MemoryReferenceVisualizer(),
+			// Its grid and colour ramp are nested, so the check lives beside the
+			// shape it checks rather than being restated here.
+			setting: { storageKey: MEMORY_REFERENCE_SETTING, defaults: DEFAULT_MEMORY_REFERENCE_SETTINGS, isValid: isMemoryReferenceSettings },
+		},
+		{ key: 'marsBot', tool: new MarsBot() },
+		{ key: 'digitalLab', tool: new DigitalLabSim() },
+		{ key: 'scavengerHunt', tool: new ScavengerHunt() },
 	] as const)
 }

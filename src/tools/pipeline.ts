@@ -10,13 +10,14 @@
  * What is modelled: in-order single issue, IF/ID/EX/MEM/WB, RAW hazards under
  * three countermeasures, the stage a branch or jump resolves in, and branch
  * prediction.  Those follow Tables III and IV of Lim & Smitha, "Pipelined MIPS
- * Simulation" (TALE 2019), which describes the PSBE plug-in for THRAX.  What is
+ * Simulation" (TALE 2019), which describes the PSBE plug-in.  What is
  * not modelled: structural hazards on memory (separate caches are assumed) and
  * write-after-write, which cannot arise in order.
  */
 
 import type { Decoded } from '../core/decoder'
 import type { ExecutionObserver, MachineConfig } from '../core/observer'
+import { RewindLog, type RewindableState } from './rewindLog'
 
 export const STAGES = ['IF', 'ID', 'EX', 'MEM', 'WB'] as const
 export type Stage = (typeof STAGES)[number]
@@ -137,7 +138,9 @@ export interface RegisterEffects {
 export function registerEffects(decoded: Decoded): RegisterEffects {
 	const { op, rs, rt, rd, shape } = decoded
 	const isLoad = LOADS.has(op)
-	const isBranch = shape === 'rs,rt,branch' || shape === 'rs,branch' || shape === 'branch'
+	// cc,branch is bc1t/bc1f with an explicit condition code -
+	// without it here, a non-zero-cc bc1t was not counted as a branch at all.
+	const isBranch = shape === 'rs,rt,branch' || shape === 'rs,branch' || shape === 'branch' || shape === 'cc,branch'
 	const isJump = JUMPS.has(op)
 	const effects = (reads: number[], writes = -1): RegisterEffects => ({
 		reads: reads.filter((register) => register !== 0),
@@ -152,6 +155,9 @@ export function registerEffects(decoded: Decoded): RegisterEffects {
 		case 'rd,rt,shamt': return effects([rt], rd)
 		case 'rd,rt,rs': return effects([rt, rs], rd)
 		case 'rd,rs': return effects([rs], rd)
+		// movf/movt with an explicit condition code - same
+		// register traffic as the plain 'rd,rs' form, the cc only picks whether it commits.
+		case 'rd,rs,cc': return effects([rs], rd)
 		case 'rs,rt': return effects([rs, rt])
 		case 'rd': return effects([], rd)
 		case 'rs': return effects([rs])
@@ -164,9 +170,19 @@ export function registerEffects(decoded: Decoded): RegisterEffects {
 		case 'rt,offset(rs)': return STORES.has(op) ? effects([rs, rt]) : effects([rs], rt)
 		// The coprocessor loads and stores touch only the base register here.
 		case 'ft,offset(rs)': return effects([rs])
+		// The twelve traps: rs,imm reads only the register
+		// half, since the immediate is baked into the word, not carried in a register.
+		case 'rs,imm': return effects([rs])
 		case 'rs,rt,branch': return effects([rs, rt])
-		case 'rs,branch': return effects([rs])
+		// bgezal/bltzal write $ra like jal, in addition to reading rs.
+		case 'rs,branch': return (op === 'BGEZAL' || op === 'BLTZAL') ? effects([rs], RA) : effects([rs])
 		case 'branch': return effects([])
+		// bc1t/bc1f with an explicit condition code: no GPR is read, only the FP flag,
+		// which this model does not track (see the module comment).
+		case 'cc,branch': return effects([])
+		// movz.s/movn.s/movz.d/movn.d: the condition is a GPR (rt); the moved value and
+		// destination are both FP registers, which this model does not track.
+		case 'fd,fs,rt': return effects([rt])
 		case 'jump': return op === 'JAL' ? effects([], RA) : effects([])
 		case 'rt,cp0': return op === 'MFC0' ? effects([], rt) : effects([rt])
 		case 'rt,fs': return op === 'MFC1' ? effects([], rt) : effects([rt])
@@ -182,6 +198,23 @@ interface InFlight {
 	ex: number
 	mem: number
 	wb: number
+}
+
+interface PipelineState {
+	rows: PipelineRow[]
+	recent: InFlight[]
+	index: number
+	previous: [number, number, number, number, number] | null
+	lastCycle: number
+	firstCycle: number
+	dataStalls: number
+	loadUseStalls: number
+	controlFlushes: number
+	pendingFlush: number
+	predictions: number
+	mispredictions: number
+	predictor: Map<number, number>
+	addresses: Map<number, PipelineAddressStats>
 }
 
 export class PipelineModel implements ExecutionObserver {
@@ -213,6 +246,47 @@ export class PipelineModel implements ExecutionObserver {
 	 * describes the machine, not the run.
 	 */
 	delaySlots = false
+	private readonly history = new RewindLog<PipelineState>()
+	private readonly state: RewindableState<PipelineState> = {
+		capture: () => ({
+			rows: this.rows.slice(),
+			recent: this.recent.slice(),
+			index: this.index,
+			previous: this.previous === null ? null : [...this.previous],
+			lastCycle: this.lastCycle,
+			firstCycle: this.firstCycle,
+			dataStalls: this.dataStalls,
+			loadUseStalls: this.loadUseStalls,
+			controlFlushes: this.controlFlushes,
+			pendingFlush: this.pendingFlush,
+			predictions: this.predictions,
+			mispredictions: this.mispredictions,
+			predictor: new Map(this.predictor),
+			addresses: new Map([...this.addresses].map(([key, stats]) => [key, { ...stats }])),
+		}),
+		restore: (state) => {
+			this.rows = state.rows
+			this.recent = state.recent
+			this.index = state.index
+			this.previous = state.previous
+			this.lastCycle = state.lastCycle
+			this.firstCycle = state.firstCycle
+			this.dataStalls = state.dataStalls
+			this.loadUseStalls = state.loadUseStalls
+			this.controlFlushes = state.controlFlushes
+			this.pendingFlush = state.pendingFlush
+			this.predictions = state.predictions
+			this.mispredictions = state.mispredictions
+			this.predictor = state.predictor
+			this.addresses = state.addresses
+			// Whatever branch reported last belongs to a run that is being redone.
+			this.lastStats = null
+		},
+	}
+
+	onSeek(to: number) {
+		this.history.seek(to, this.state)
+	}
 
 	constructor(settings: PipelineSettings = DEFAULT_PIPELINE_SETTINGS) {
 		this.settings = settings
@@ -252,6 +326,7 @@ export class PipelineModel implements ExecutionObserver {
 		this.predictor.clear()
 		this.addresses.clear()
 		this.lastStats = null
+		this.history.clear()
 	}
 
 	onReset() {
@@ -272,7 +347,8 @@ export class PipelineModel implements ExecutionObserver {
 		return stats
 	}
 
-	onInstruction(address: number, decoded: Decoded) {
+	onInstruction(address: number, decoded: Decoded, instructionCount = 0) {
+		this.history.record(instructionCount, this.state)
 		const effects = registerEffects(decoded)
 		const flushed = this.pendingFlush
 		this.pendingFlush = 0

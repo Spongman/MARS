@@ -8,6 +8,7 @@
  */
 
 import type { ExecutionObserver } from '../core/observer'
+import { RewindLog, type RewindableState } from './rewindLog'
 
 export interface AddressProfile {
 	/** Times the instruction at this address ran. */
@@ -40,10 +41,29 @@ export function heatLevel(count: number, max: number) {
 	return Math.min(HEAT_LEVELS - 1, Math.floor(share * HEAT_LEVELS))
 }
 
+interface ProfileState { addresses: Map<number, AddressProfile>, total: number, max: number }
+
 export class ExecutionProfile implements ExecutionObserver {
 	private addresses = new Map<number, AddressProfile>()
 	private total = 0
 	private max = 0
+	private readonly history = new RewindLog<ProfileState>()
+	private readonly state: RewindableState<ProfileState> = {
+		capture: () => {
+			const addresses = new Map<number, AddressProfile>()
+			for (const [address, entry] of this.addresses) addresses.set(address, { ...entry })
+			return { addresses, total: this.total, max: this.max }
+		},
+		restore: (state) => {
+			this.addresses = state.addresses
+			this.total = state.total
+			this.max = state.max
+		},
+	}
+
+	onSeek(to: number) {
+		this.history.seek(to, this.state)
+	}
 
 	private entryFor(address: number) {
 		const key = address >>> 0
@@ -55,7 +75,8 @@ export class ExecutionProfile implements ExecutionObserver {
 		return entry
 	}
 
-	onInstruction(address: number) {
+	onInstruction(address: number, _decoded?: unknown, instructionCount = 0) {
+		this.history.record(instructionCount, this.state)
 		const entry = this.entryFor(address)
 		entry.count += 1
 		this.total += 1
@@ -72,6 +93,7 @@ export class ExecutionProfile implements ExecutionObserver {
 		this.addresses.clear()
 		this.total = 0
 		this.max = 0
+		this.history.clear()
 	}
 
 	onReset() {

@@ -40,6 +40,41 @@ describe('instruction statistics', () => {
 		expect(categoryOf('ADD')).toBe('alu')
 		expect(categoryOf('SYSCALL')).toBe('other')
 	})
+
+	it('files the unaligned and atomic accesses under memory', () => {
+		for (const op of ['LWL', 'LWR', 'SWL', 'SWR', 'LL', 'SC']) {
+			expect(categoryOf(op)).toBe('memory')
+		}
+	})
+
+	// P1: the 30 instructions added by A5/A6 were unknown to categoryOf and all fell
+	// through to 'other' (or, for the MOV family, were accidentally swept into
+	// 'coprocessor' by the 'MOV' prefix check).
+	it('files branch-and-link with the other branches', () => {
+		expect(categoryOf('BGEZAL')).toBe('branch')
+		expect(categoryOf('BLTZAL')).toBe('branch')
+	})
+
+	it('files bit-counting and multiply-accumulate as ALU work', () => {
+		for (const op of ['CLO', 'CLZ', 'MADD', 'MADDU', 'MSUB', 'MSUBU']) {
+			expect(categoryOf(op)).toBe('alu')
+		}
+	})
+
+	it('splits conditional moves by which register file they write', () => {
+		// GPR-to-GPR: no FPU or CP0 involved, so ALU, not coprocessor.
+		expect(categoryOf('MOVN')).toBe('alu')
+		expect(categoryOf('MOVZ')).toBe('alu')
+		// FP-register moves, gated on either a GPR or an FP condition code.
+		for (const op of ['MOVN.S', 'MOVN.D', 'MOVZ.S', 'MOVZ.D', 'MOVF.S', 'MOVF.D', 'MOVT.S', 'MOVT.D']) {
+			expect(categoryOf(op)).toBe('coprocessor')
+		}
+	})
+
+	it('gives the twelve traps their own category', () => {
+		const traps = ['TEQ', 'TEQI', 'TGE', 'TGEU', 'TGEI', 'TGEIU', 'TLT', 'TLTU', 'TLTI', 'TLTIU', 'TNE', 'TNEI']
+		for (const op of traps) expect(categoryOf(op)).toBe('trap')
+	})
 })
 
 describe('cache simulator', () => {

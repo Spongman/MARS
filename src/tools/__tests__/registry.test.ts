@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ExecutionObserver, MachineConfig } from '../../core/observer'
 import { build, withExit } from '../../core/__tests__/helpers'
+import { DEFAULT_MEMORY_REFERENCE_SETTINGS } from '../memoryReference'
 import { PipelineModel } from '../pipeline'
 import { ToolRegistry, createToolRegistry, type Tool } from '../registry'
 
@@ -165,5 +166,54 @@ describe('tool registry', () => {
 		expect(cleared.cache.accesses).toBe(0)
 		expect(cleared.branchHistory.predictions).toBe(0)
 		expect(cleared.pipeline.instructions).toBe(0)
+	})
+
+	it('watches a run through the ported tools too, and clears them with the rest', async () => {
+		const registry = createToolRegistry()
+		const simulator = build(withExit(`
+			.data
+		cell:	.word 0
+			.text
+			la $t0, cell
+			li $t1, 7
+			sw $t1, 0($t0)
+			lw $t2, 0($t0)
+		`))
+		registry.attach(simulator, { delayedBranching: false })
+		await simulator.run()
+
+		const ran = registry.views()
+		// The store and read both land in the first cell of the default grid.
+		expect(ran.memoryReference.counts[0]).toBe(2)
+		expect(ran.memoryReference.max).toBe(2)
+		// The MMIO tools saw a run that never touched their registers.
+		expect(ran.marsBot.segments).toEqual([])
+		expect(ran.scavengerHunt.gameOn).toBe(false)
+
+		registry.resetAll()
+		const cleared = registry.views()
+		expect(cleared.memoryReference.counts[0]).toBe(0)
+		expect(cleared.memoryReference.max).toBe(0)
+	})
+
+	it('gives the memory reference grid the settings that were stored', () => {
+		store.set('thrax-web.settings.tools.memoryReference', JSON.stringify({
+			...DEFAULT_MEMORY_REFERENCE_SETTINGS,
+			rows: 4,
+			columns: 8,
+		}))
+		const registry = createToolRegistry()
+		expect(registry.loadSettings().memoryReference.rows).toBe(4)
+		expect(registry.views().memoryReference.counts).toHaveLength(32)
+
+		registry.setSettings('memoryReference', { ...DEFAULT_MEMORY_REFERENCE_SETTINGS, rows: 2, columns: 2 })
+		expect(registry.views().memoryReference.counts).toHaveLength(4)
+		expect(JSON.parse(store.get('thrax-web.settings.tools.memoryReference')!).rows).toBe(2)
+	})
+
+	it('falls back to the defaults for a memory reference grid it cannot read', () => {
+		store.set('thrax-web.settings.tools.memoryReference', '{"rows":0,"columns":8}')
+		const registry = createToolRegistry()
+		expect(registry.loadSettings().memoryReference).toEqual(DEFAULT_MEMORY_REFERENCE_SETTINGS)
 	})
 })

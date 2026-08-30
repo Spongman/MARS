@@ -58,6 +58,45 @@ describe('register effects', () => {
 		expect(branch.isBranch).toBe(true)
 		expect(branch.isJump).toBe(false)
 	})
+
+	// P1: bc1t/bc1f with an explicit condition code is shape 'cc,branch', which the
+	// isBranch check did not list, so the branch-prediction visualization silently
+	// under-counted it (InstructionSet.java:1986).
+	it('counts bc1t with a condition code as a branch', () => {
+		const branch = effectsOf('here: bc1t 3,here')
+		expect(branch.isBranch).toBe(true)
+		expect(branch.reads).toEqual([])
+	})
+
+	// The twelve traps (rs,imm) had no case at all, so a hazard on their register
+	// operand went undetected (InstructionSet.java:2846 teqi).
+	it('reads a trap immediate form\'s register operand', () => {
+		expect(effectsOf('teqi $t0, -100').reads).toEqual([8])
+		expect(effectsOf('tgeiu $t1, -1').reads).toEqual([9])
+	})
+
+	// movz.s/movn.s (fd,fs,rt) read the GPR condition; the FP source and destination
+	// are not tracked here (only the integer file is modelled).
+	it('reads the GPR condition of an FP conditional move and writes nothing GPR', () => {
+		const move = effectsOf('movz.s $f0,$f1,$t3')
+		expect(move.reads).toEqual([11])
+		expect(move.writes).toBe(-1)
+	})
+
+	// bgezal/bltzal write $ra like jal, in addition to reading rs (InstructionSet.java:909-924).
+	it('knows bgezal and bltzal write $ra', () => {
+		expect(effectsOf('here: bgezal $t0, here').writes).toBe(31)
+		expect(effectsOf('here: bltzal $t0, here').writes).toBe(31)
+		expect(effectsOf('here: bgezal $t0, here').isBranch).toBe(true)
+	})
+
+	// movf/movt with an explicit condition code (rd,rs,cc) had no case, so the
+	// dependency between rs and rd went untracked.
+	it('tracks the register traffic of movf/movt with an explicit condition code', () => {
+		const move = effectsOf('movf $t0, $t1, 1')
+		expect(move.reads).toEqual([9])
+		expect(move.writes).toBe(8)
+	})
 })
 
 describe('ideal pipeline', () => {

@@ -1,5 +1,5 @@
 /**
- * Branch history table, following the THRAX BHT simulator.
+ * Branch history table.
  *
  * Each conditional branch indexes a saturating counter by its address.  A
  * one-bit entry predicts whatever happened last time; a two-bit entry has to be
@@ -8,6 +8,7 @@
  */
 
 import type { ExecutionObserver } from '../core/observer'
+import { RewindLog, type RewindableState } from './rewindLog'
 
 export interface BranchHistorySettings {
 	/** Entries in the table; the branch address indexes it modulo this. */
@@ -43,6 +44,8 @@ export interface BranchHistorySnapshot {
 	entries: BranchHistoryEntry[]
 }
 
+interface BranchHistoryState { counters: Counter[], predictions: number, correct: number }
+
 interface Counter {
 	state: number
 	predictions: number
@@ -55,6 +58,29 @@ export class BranchHistoryTable implements ExecutionObserver {
 	private counters: Counter[] = []
 	private predictions = 0
 	private correct = 0
+	/** The instruction now running, which tags the checkpoints it takes. */
+	private at = 0
+	private readonly history = new RewindLog<BranchHistoryState>()
+	private readonly state: RewindableState<BranchHistoryState> = {
+		capture: () => ({
+			counters: this.counters.map((counter) => ({ ...counter, addresses: new Set(counter.addresses) })),
+			predictions: this.predictions,
+			correct: this.correct,
+		}),
+		restore: (state) => {
+			this.counters = state.counters
+			this.predictions = state.predictions
+			this.correct = state.correct
+		},
+	}
+
+	onInstruction(_address: number, _decoded: unknown, instructionCount = 0) {
+		this.at = instructionCount
+	}
+
+	onSeek(to: number) {
+		this.history.seek(to, this.state)
+	}
 
 	constructor(settings: BranchHistorySettings = DEFAULT_BHT_SETTINGS) {
 		this.settings = settings
@@ -77,6 +103,7 @@ export class BranchHistoryTable implements ExecutionObserver {
 		}))
 		this.predictions = 0
 		this.correct = 0
+		this.history.clear()
 	}
 
 	onReset() {
@@ -84,6 +111,7 @@ export class BranchHistoryTable implements ExecutionObserver {
 	}
 
 	onBranch(address: number, taken: boolean) {
+		this.history.record(this.at, this.state)
 		const counter = this.counters[this.indexOf(address)]
 		const predicted = this.predictsTaken(counter.state)
 
@@ -98,7 +126,7 @@ export class BranchHistoryTable implements ExecutionObserver {
 		counter.state = this.nextState(counter.state, taken)
 	}
 
-	/** THRAX indexes the table with the branch's own word address. */
+	/** The table is indexed by the branch's own word address. */
 	private indexOf(address: number): number {
 		return ((address >>> 2) % this.settings.entryCount + this.settings.entryCount) % this.settings.entryCount
 	}
