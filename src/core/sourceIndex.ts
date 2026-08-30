@@ -104,6 +104,11 @@ export class SourceIndex {
 		return this.byAddress.get(address) ?? null
 	}
 
+	/** Every file that assembled to something, in the order the layout reached them. */
+	files(): IterableIterator<string> {
+		return this.byFile.keys()
+	}
+
 	/** Lines that assembled to something, in layout order: instructions, then data. */
 	lines(file: string): IterableIterator<[number, SourceRow[]]> {
 		return (this.byFile.get(file)?.lines ?? NO_LINES).entries()

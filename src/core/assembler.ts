@@ -2,14 +2,16 @@
  * MIPS Assembler - Converts assembly code to machine code
  */
 
-import { doubleToBits, fpRegisterNumber, cp0RegisterNumber, singleToBits } from './coprocessor'
+import { doubleToBits, fpRegisterNumber, cp0RegisterNumber, FP_REGISTER_COUNT, singleToBits } from './coprocessor'
 import { AssemblyError, at, atInstruction, type SourcePosition } from './diagnostics'
+import { basicForms, pseudoForms, type IsaOperandKind } from './isa'
 import { Lexer } from './lexer'
 import { expandMacros } from './macros'
 import { Parser, type ParseResult } from './parser'
 import { REGISTER_NAMES, registerNumber } from './registers'
+import { MEMORY_CONFIGURATIONS, type MemoryConfigurationValues } from './settings'
 import { buildSourceIndex, EMPTY_SOURCE_INDEX } from './sourceIndex'
-import type { Diagnostic, ImmediateArgument, LabelArgument, MipsArgument, MipsInstruction, MipsProgram, TextSegment, TokenData } from './types'
+import type { Diagnostic, ImmediateArgument, LabelArgument, MipsArgument, MipsInstruction, MipsProgram, SymbolTables, TextSegment, TokenData } from './types'
 
 /** Instructions whose two-operand form repeats the destination as a source. */
 const TWO_OPERAND_FORMS = new Set([
@@ -40,7 +42,6 @@ const FP_CONVERT_FUNCTIONS: Record<string, number> = {
 	'CVT.D': 33,
 	'CVT.W': 36,
 }
-const FP_COMPARE_FUNCTIONS: Record<string, number> = { EQ: 50, LT: 60, LE: 62 }
 const FP_MEMORY_OPCODES: Record<string, number> = { LWC1: 0x31, LDC1: 0x35, SWC1: 0x39, SDC1: 0x3d }
 
 /** One translation unit; several are assembled together into one program. */
@@ -58,6 +59,7 @@ function emptyProgram(): MipsProgram {
 	return {
 		instructions: [],
 		labels: new Map(),
+		symbols: { locals: new Map(), globals: new Map() },
 		data: [],
 		sourceIndex: EMPTY_SOURCE_INDEX,
 	}
@@ -65,22 +67,177 @@ function emptyProgram(): MipsProgram {
 
 export interface AssemblerOptions {
 	/**
-	 * THRAX's delayed branching setting, off by default (Settings.java:130).  It
-	 * only reaches the assembler through the pseudo-ops that branch over a delay
+	 * The delayed branching setting, off by default.  It only reaches the assembler through the pseudo-ops that branch over a delay
 	 * slot of their own.
 	 */
 	delayedBranching?: boolean
+	/**
+	 * Extended assembly, on by default.  Off, only the basic forms of the isa
+	 * table assemble: a pseudo-instruction or an extended operand form is an
+	 * error.
+	 */
+	extendedAssembler?: boolean
+	/**
+	 * Off by default.  On, a warning fails the assembly the way an error does
+	 *.
+	 */
+	warningsAreErrors?: boolean
+	/** Where each segment lays out; the SPIM-derived default when unset. */
+	memory?: MemoryConfigurationValues
+}
+
+/** Writes an operand back out the way it was written, for a diagnostic. */
+function formatArgument(arg: MipsArgument): string {
+	switch (arg.type) {
+		case 'register': return arg.value
+		case 'immediate': return String(arg.value)
+		case 'label': return arg.offset ? `${arg.value}+${arg.offset}` : arg.value
+		case 'string': return JSON.stringify(arg.value)
+		case 'memory': return `${formatArgument(arg.offset)}(${arg.register})`
+	}
+}
+
+/** An expanded instruction as source, so a diagnostic can name it. */
+function formatInstruction(instruction: MipsInstruction): string {
+	const args = instruction.args.map(formatArgument).join(',')
+	return args ? `${instruction.name.toLowerCase()} ${args}` : instruction.name.toLowerCase()
 }
 
 /** Names an operand in an error message, without dumping its internals. */
 function describeArgument(arg: MipsArgument | string | undefined): string {
 	if (arg === undefined) return 'nothing'
 	if (typeof arg === 'string') return arg
+	if (arg.type === 'register') return `the register ${arg.value}`
 	if (arg.type === 'immediate') return `the value ${arg.value}`
 	if (arg.type === 'label') return `the label ${arg.value}`
 	if (arg.type === 'string') return 'a string'
 	if (arg.type === 'memory') return 'a memory operand'
 	return 'that operand'
+}
+
+/**
+ * Every symbol in one map, for naming an address and for finding the entry
+ * point.  A global name wins, since it is the one every file agrees on.
+ */
+function flattenSymbols(symbols: SymbolTables): Map<string, number> {
+	const flat = new Map<string, number>()
+	for (const table of symbols.locals.values()) {
+		for (const [name, address] of table) if (!flat.has(name)) flat.set(name, address)
+	}
+	for (const [name, address] of symbols.globals) flat.set(name, address)
+	return flat
+}
+
+/** One accepted way of writing an instruction, from the isa table. */
+interface Signature { operands: readonly IsaOperandKind[]; example: string }
+
+/**
+ * Operand forms THRAX accepts beyond the standard table.  Every instruction with a
+ * two-operand form also takes a full 32-bit immediate, in the last slot of the
+ * three-operand form and in the two-operand form itself, where `PseudoOps.txt`
+ * enumerates only some of the combinations (`:96-124`).  `extendedAssembler`
+ * off rejects them (A4).
+ */
+function thraxSignatures(name: string): Signature[] {
+	if (!TWO_OPERAND_FORMS.has(name.toUpperCase())) return []
+	const spelling = name.toLowerCase()
+	return [
+		{ operands: ['gpr', 'gpr', 'imm32'], example: `${spelling} $t1,$t2,100000` },
+		{ operands: ['gpr', 'imm32'], example: `${spelling} $t1,100000` },
+	]
+}
+
+/** Every form `name` accepts, basic ones first, as the isa table orders them. */
+function signaturesFor(name: string): Signature[] {
+	return [...basicForms(name), ...pseudoForms(name), ...thraxSignatures(name)]
+}
+
+/**
+ * Inclusive range of each integer operand kind, following how an integer
+ * literal: a shift amount is 0-31, and a value
+ * outside a 16-bit field falls through to the 32-bit pseudo form instead.
+ */
+const IMMEDIATE_RANGES: Partial<Record<IsaOperandKind, readonly [number, number]>> = {
+	imm3: [0, 7],
+	imm5: [0, 31],
+	imm16s: [-0x8000, 0x7fff],
+	imm16u: [0, 0xffff],
+	imm20: [0, 0xfffff],
+	imm32: [-0x80000000, 0xffffffff],
+}
+
+/**
+ * The halves an extended address is built from.  A load adds the low half back
+ * signed, so bit 15 of the address borrows from the high half
+ *.
+ */
+function highHalf(value: number): number {
+	return (((value >> 16) + ((value >> 15) & 1)) & 0xffff) >>> 0
+}
+
+function lowHalf(value: number): number {
+	return (value << 16) >> 16
+}
+
+function isGpr(name: string): boolean {
+	return registerNumber(name) !== null
+}
+
+/** `$f0`-`$f31`; a bare number names a general register, not this file. */
+function isFpr(name: string): boolean {
+	const match = /^\$f(\d{1,2})$/i.exec(name)
+	return match !== null && Number(match[1]) < FP_REGISTER_COUNT
+}
+
+function isCp0(name: string): boolean {
+	try {
+		cp0RegisterNumber(name)
+		return true
+	} catch {
+		return false
+	}
+}
+
+/** Whether `arg` can stand in an operand slot of this kind. */
+function matchesKind(kind: IsaOperandKind, arg: MipsArgument | undefined): boolean {
+	if (!arg) return false
+	switch (kind) {
+		case 'gpr': return arg.type === 'register' && isGpr(arg.value)
+		case 'fpr': return arg.type === 'register' && isFpr(arg.value)
+		case 'fpr-even': return arg.type === 'register' && isFpr(arg.value) && fpRegisterNumber(arg.value) % 2 === 0
+		// A CP0 register is written by number, or by one of its aliases.
+		case 'cp0': return arg.type === 'register' && (isGpr(arg.value) || isCp0(arg.value))
+		case 'float': return arg.type === 'immediate'
+		case 'label':
+		case 'label-offset':
+		case 'target26': return arg.type === 'label'
+		case 'mem':
+		case 'base':
+		case 'mem32':
+		case 'label-mem':
+		case 'label-offset-mem': return arg.type === 'memory'
+		default: {
+			const range = IMMEDIATE_RANGES[kind]
+			if (!range) return false
+			return arg.type === 'immediate' && Number.isInteger(arg.value) && arg.value >= range[0] && arg.value <= range[1]
+		}
+	}
+}
+
+function matchesSignature(signature: Signature, args: MipsArgument[]): boolean {
+	return signature.operands.length === args.length &&
+		signature.operands.every((kind, index) => matchesKind(kind, args[index]))
+}
+
+/** What an operand slot wants, named the way the encoders name it. */
+function describeKind(kind: IsaOperandKind): string {
+	if (kind === 'gpr' || kind === 'cp0') return 'a register'
+	if (kind === 'fpr' || kind === 'fpr-even') return 'a floating-point register'
+	if (kind === 'label' || kind === 'target26' || kind === 'label-offset') return 'a label'
+	if (kind === 'mem' || kind === 'base' || kind === 'mem32' || kind === 'label-mem' || kind === 'label-offset-mem') {
+		return 'a memory operand'
+	}
+	return 'an immediate value'
 }
 
 export class Assembler {
@@ -91,10 +248,19 @@ export class Assembler {
 	machineCode: number[]
 	currentAddress: number
 	delayedBranching: boolean
+	extendedAssembler: boolean
+	warningsAreErrors: boolean
+	memory: MemoryConfigurationValues
 	/** Faults found in the source, rather than bugs in the assembler. */
 	diagnostics: Diagnostic[]
 	/** Instruction being expanded or encoded, which positions its diagnostics. */
 	currentInstruction: MipsInstruction | null
+	/**
+	 * `lui` instructions whose label half is the high half of a load or store
+	 * address, and so carries the bit-15 adjustment.  `la` resolves with `ori`
+	 * and must not.
+	 */
+	adjustedHighHalves: Set<MipsInstruction>
 
 	/**
 	 * A bare string assembles as a single unnamed file.  Given several files,
@@ -105,10 +271,14 @@ export class Assembler {
 		this.entries = entryNames ? this.files.filter((file) => entryNames.includes(file.name)) : this.files
 		this.program = null
 		this.machineCode = []
-		this.currentAddress = 0x00400000
+		this.memory = options.memory ?? MEMORY_CONFIGURATIONS.default
+		this.currentAddress = this.memory.textBaseAddress
 		this.delayedBranching = options.delayedBranching ?? false
+		this.extendedAssembler = options.extendedAssembler ?? true
+		this.warningsAreErrors = options.warningsAreErrors ?? false
 		this.diagnostics = []
 		this.currentInstruction = null
+		this.adjustedHighHalves = new Set()
 	}
 
 	get entryFile(): string {
@@ -135,9 +305,12 @@ export class Assembler {
 			const tokens = expandMacros(this.tokenizeFiles())
 
 			// Parse
-			parsed = new Parser(tokens).parse()
+			// The entry files are the ones assembled in their own right; an
+			// `.include` belongs to its includer.
+			parsed = new Parser(tokens, new Set(this.entries.map((file) => file.name)), this.memory).parse()
 		} catch (error) {
 			this.record(error)
+			this.promoteWarnings()
 			return { program: emptyProgram(), machineCode: [], diagnostics: this.diagnostics }
 		}
 
@@ -146,6 +319,7 @@ export class Assembler {
 		// Generate machine code
 		this.generateMachineCode()
 
+		this.promoteWarnings()
 		this.sortDiagnostics()
 		return {
 			program: this.program,
@@ -165,6 +339,17 @@ export class Assembler {
 		const seen = this.diagnostics.some((existing) =>
 			existing.message === diagnostic.message && existing.file === diagnostic.file && existing.line === diagnostic.line)
 		if (!seen) this.diagnostics.push(diagnostic)
+	}
+
+	/**
+	 * With `warningsAreErrors`, a warning fails the assembly exactly as an error
+	 * does.  The message and code are kept, so the reader
+	 * still sees which warning it was.
+	 */
+	promoteWarnings() {
+		if (!this.warningsAreErrors) return
+		this.diagnostics = this.diagnostics.map((diagnostic) =>
+			diagnostic.severity === 'warning' ? { ...diagnostic, severity: 'error' } : diagnostic)
 	}
 
 	/**
@@ -195,16 +380,22 @@ export class Assembler {
 		for (const file of this.entries) {
 			if (included.has(file.name)) continue
 			included.add(file.name)
-			tokens.push(...this.tokenizeFile(file, included))
+			tokens.push(...this.tokenizeFile(file, included, [file.name]))
 		}
 
 		const last = tokens[tokens.length - 1]
-		tokens.push({ type: 'EOF', value: '', line: last ? last.line : 1, column: 1, file: last?.file ?? this.entryFile })
+		tokens.push({ type: 'EOF', value: '', line: last ? last.line : 1, column: 1, file: last?.file ?? this.entryFile, unit: last?.unit ?? this.entryFile })
 		return tokens
 	}
 
-	tokenizeFile(file: SourceFile, included: Set<string>): TokenData[] {
-		const tokens = new Lexer(file.code, file.name).tokenize()
+	/** `open` is the chain of files being spliced, innermost last, for cycle reporting. */
+	tokenizeFile(file: SourceFile, included: Set<string>, open: string[]): TokenData[] {
+		// An included file's tokens belong to the unit that opened the chain.
+		const unit = open[0] ?? file.name
+		const lexer = new Lexer(file.code, file.name)
+		const tokens = lexer.tokenize().map((token) => ({ ...token, unit }))
+		// The lexer's warnings are the assembly's, so they reach the same channel.
+		this.diagnostics.push(...lexer.diagnostics)
 		const output: TokenData[] = []
 
 		for (let index = 0; index < tokens.length; index += 1) {
@@ -220,15 +411,15 @@ export class Assembler {
 				throw new AssemblyError('.include expects a file name', at(token))
 			}
 			index += 1
-			output.push(...this.includeFile(target.value, included, token))
+			output.push(...this.includeFile(target.value, included, open, token))
 		}
 
 		// Statements must not run together across a file boundary.
-		output.push({ type: 'NEWLINE', value: '\n', line: 1, column: 1, file: file.name })
+		output.push({ type: 'NEWLINE', value: '\n', line: 1, column: 1, file: file.name, unit })
 		return output
 	}
 
-	includeFile(name: string, included: Set<string>, token: TokenData): TokenData[] {
+	includeFile(name: string, included: Set<string>, open: string[], token: TokenData): TokenData[] {
 		const wanted = name.toLowerCase().replace(/^.*[\\/]/, '')
 		const file = this.files.find((candidate) => candidate.name === name) ??
 			this.files.find((candidate) => candidate.name.toLowerCase().replace(/^.*[\\/]/, '') === wanted)
@@ -237,10 +428,19 @@ export class Assembler {
 			throw new AssemblyError(`Cannot include "${name}"; open files are: ${available}`, at(token))
 		}
 
-		// A file already assembled, or already included, is not repeated.
+		// A file that is still being spliced cannot include itself again, directly
+		// or through another.
+		const cycle = open.indexOf(file.name)
+		if (cycle >= 0) {
+			const chain = [...open.slice(cycle), file.name].join(' -> ')
+			throw new AssemblyError(`Recursive include of file ${file.name}: ${chain}`, at(token))
+		}
+		// A file already assembled, or already included, is not repeated.  Upstream
+		// calls that recursive too, since its seen-set is never unwound; splicing
+		// once instead keeps a header shared by two includers usable.
 		if (included.has(file.name)) return []
 		included.add(file.name)
-		return this.tokenizeFile(file, included)
+		return this.tokenizeFile(file, included, [...open, file.name])
 	}
 
 	generateMachineCode() {
@@ -266,15 +466,28 @@ export class Assembler {
 		const expanded: MipsInstruction[] = []
 		// The parser leaves only data labels resolved; text labels ride on the
 		// instructions they precede, so expansion keeps them in step.
-		const labels = new Map(parsed.labels)
+		const symbols: SymbolTables = {
+			locals: new Map([...parsed.symbols.locals].map(([unit, table]) => [unit, new Map(table)])),
+			globals: new Map(parsed.symbols.globals),
+		}
+		const bind = (unit: string, name: string, address: number) => {
+			let table = symbols.locals.get(unit)
+			if (!table) {
+				table = new Map()
+				symbols.locals.set(unit, table)
+			}
+			table.set(name, address)
+		}
 
 		for (const instruction of parsed.instructions) {
 			try {
+				this.validateInstruction(instruction)
 				const sequence = this.expandInstruction(instruction)
 				sequence.forEach((item, index) => {
 					item.labels = index === 0 ? [...instruction.labels] : []
 					item.segment = instruction.segment ?? 'text'
 					item.sourceFile = instruction.sourceFile ?? ''
+					item.unit = instruction.unit ?? ''
 					item.sourceColumn = instruction.sourceColumn
 					expanded.push(item)
 				})
@@ -289,19 +502,22 @@ export class Assembler {
 			const segment = instruction.segment ?? 'text'
 			const address = nextAddress[segment]
 			instruction.address = address
-			for (const label of instruction.labels) labels.set(label, address)
+			for (const { name, unit } of instruction.labels) bind(unit, name, address)
 			nextAddress[segment] = address + 4
 		}
 
 		// A label after the final instruction of a text segment names the end of
 		// that segment, which only the finished layout knows.
 		for (const { segment, labels: endLabels } of parsed.segmentEndLabels) {
-			for (const label of endLabels) labels.set(label, nextAddress[segment])
+			for (const { name, unit } of endLabels) bind(unit, name, nextAddress[segment])
 		}
+
+		this.transferGlobals(symbols, parsed.globalNames)
 
 		const program: MipsProgram = {
 			instructions: expanded,
-			labels,
+			labels: flattenSymbols(symbols),
+			symbols,
 			data: parsed.data,
 			sourceIndex: buildSourceIndex(this.entryFile, expanded, parsed.data),
 		}
@@ -314,24 +530,146 @@ export class Assembler {
 			this.currentInstruction = instruction
 			try {
 				if (instruction.name === 'LUI' && instruction.args[1]?.type === 'label') {
-					instruction.args[1] = { type: 'immediate', value: this.labelAddress(labels, instruction.args[1]) >>> 16 }
+					const address = this.labelAddress(instruction.unit ?? '', instruction.args[1])
+					const value = this.adjustedHighHalves.has(instruction) ? highHalf(address) : address >>> 16
+					instruction.args[1] = { type: 'immediate', value }
 				}
 				if (instruction.name === 'ORI' && instruction.args[2]?.type === 'label') {
-					instruction.args[2] = { type: 'immediate', value: this.labelAddress(labels, instruction.args[2]) & 0xffff }
+					instruction.args[2] = { type: 'immediate', value: this.labelAddress(instruction.unit ?? '', instruction.args[2]) & 0xffff }
 				}
 			} catch (error) {
 				this.record(error)
 			}
 		}
 
+		this.resolveDataLabels(program)
 		return program
 	}
 
-	/** Address of a label reference, including the constant of `label+4`. */
-	labelAddress(labels: Map<string, number>, arg: LabelArgument): number {
-		const address = labels.get(arg.value)
+	/**
+	 * Moves each `.globl` name out of its own file's table into the one every
+	 * file can see.  The parser has already rejected a name its file never
+	 * defined, and one two files both claim.
+	 */
+	transferGlobals(symbols: SymbolTables, globalNames: Map<string, string>) {
+		for (const [name, unit] of globalNames) {
+			const table = symbols.locals.get(unit)
+			const address = table?.get(name)
+			if (address === undefined) continue
+			table!.delete(name)
+			symbols.globals.set(name, address)
+		}
+	}
+
+	/**
+	 * A `.word label` operand becomes its address here, where the file it was
+	 * written in is still known and an undefined name is a diagnostic rather
+	 * than a failure to load.
+	 */
+	resolveDataLabels(program: MipsProgram) {
+		for (const entry of program.data) {
+			const unit = entry.unit ?? ''
+			const position = { file: entry.sourceFile || undefined, line: entry.sourceLine }
+			entry.bytes = entry.bytes.map((item) => {
+				if (typeof item === 'number' || item.value.type !== 'label') return item
+				const label = item.value
+				const address = this.symbolAddress(unit, label.value)
+				if (address === undefined) {
+					this.record(new AssemblyError(`Undefined label: ${label.value}`, position))
+					return item
+				}
+				const value: ImmediateArgument = { type: 'immediate', value: address + (label.offset ?? 0) }
+				return { ...item, value }
+			})
+		}
+	}
+
+	/** A name in the referring file's own table, or failing that a global one. */
+	symbolAddress(unit: string, name: string): number | undefined {
+		const symbols = this.program?.symbols
+		return symbols?.locals.get(unit)?.get(name) ?? symbols?.globals.get(name)
+	}
+
+	/**
+	 * Address of a label reference, including the constant of `label+4`.  A name
+	 * is looked for in the referring file's own table first, then among the
+	 * global ones.
+	 */
+	labelAddress(unit: string, arg: LabelArgument): number {
+		const address = this.symbolAddress(unit, arg.value)
 		if (address === undefined) throw new AssemblyError(`Undefined label: ${arg.value}`, this.instructionPosition())
 		return address + (arg.offset ?? 0)
+	}
+
+	/**
+	 * Rejects an instruction no form of its mnemonic accepts, before expansion
+	 * or encoding can drop an operand or truncate it to zero.  Matching follows the
+	 * same way, over its own operand token types
+	 * (`OperandFormat.tokenOperandMatch`,).
+	 */
+	validateInstruction(instruction: MipsInstruction) {
+		const signatures = signaturesFor(instruction.name)
+		// A mnemonic with no form is one the encoder reports as unknown.
+		if (signatures.length === 0) return
+
+		const args = instruction.args
+		const position = atInstruction(instruction)
+		for (const arg of args) {
+			if (arg.type === 'register' && !isGpr(arg.value) && !isFpr(arg.value) && !isCp0(arg.value)) {
+				throw new AssemblyError(`Unknown register: ${arg.value}`, position)
+			}
+		}
+		if (signatures.some((signature) => matchesSignature(signature, args))) {
+			// What is rejected is the form the operands matched, not the mnemonic: an
+			// instruction with both a basic and a pseudo form is fine written the
+			// basic way.
+			if (!this.extendedAssembler && !basicForms(instruction.name).some((form) => matchesSignature(form, args))) {
+				throw new AssemblyError(this.extendedFormMessage(instruction), position)
+			}
+			return
+		}
+
+		// Only forms of the right length can say anything about an operand.
+		const sized = signatures.filter((signature) => signature.operands.length === args.length)
+		if (sized.length === 0) {
+			const fewest = Math.min(...signatures.map((signature) => signature.operands.length))
+			const relation = args.length < fewest ? 'Too few' : 'Too many'
+			throw new AssemblyError(`${relation} operands for ${instruction.name}; expected: ${signatures[0].example}`, position)
+		}
+
+		// The form that got furthest names the operand actually at fault.
+		const matched = (signature: Signature) =>
+			signature.operands.findIndex((kind, slot) => !matchesKind(kind, args[slot]))
+		const signature = sized.reduce((best, next) => (matched(next) > matched(best) ? next : best))
+		const index = matched(signature)
+		const kind = signature.operands[index]
+		const arg = args[index]
+		if (kind === 'fpr-even' && arg.type === 'register' && isFpr(arg.value)) {
+			throw new AssemblyError(`${arg.value} must be an even-numbered floating-point register`, position)
+		}
+		if (IMMEDIATE_RANGES[kind] && arg.type === 'immediate' && Number.isInteger(arg.value)) {
+			throw new AssemblyError(
+				`Operand ${index + 1} of ${instruction.name} is out of range; expected: ${signature.example}`,
+				position,
+			)
+		}
+		throw new AssemblyError(`Expected ${describeKind(kind)}, found ${describeArgument(arg)}`, position)
+	}
+
+	/**
+	 * The standard wording, extended with the basic sequence
+	 * the form would have expanded to, which is what the author has to write
+	 * instead.  An expansion that needs the final layout is left unnamed.
+	 */
+	extendedFormMessage(instruction: MipsInstruction): string {
+		const refusal = 'Extended (pseudo) instruction or format not permitted'
+		let basic = ''
+		try {
+			basic = this.expandInstruction(instruction).map(formatInstruction).join('; ')
+		} catch {
+			basic = ''
+		}
+		return basic ? `${refusal}; it expands to: ${basic}.  See Settings.` : `${refusal}.  See Settings.`
 	}
 
 	expandInstruction(instruction: MipsInstruction): MipsInstruction[] {
@@ -347,8 +685,8 @@ export class Assembler {
 		const immediate = (value: number): MipsArgument => ({ type: 'immediate', value })
 		const memory = (offset: number, register: string): MipsArgument =>
 			({ type: 'memory', offset: { type: 'immediate', value: offset }, register })
-		// THRAX accepts a two-operand form of the three-operand arithmetic and
-		// logical instructions, where the destination is also the first source.
+		// The three-operand arithmetic and logical instructions also take a
+		// two-operand form, where the destination is also the first source.
 		const [first, second, third] = TWO_OPERAND_FORMS.has(instruction.name) && instruction.args.length === 2
 			? [instruction.args[0], instruction.args[0], instruction.args[1]]
 			: instruction.args
@@ -363,14 +701,14 @@ export class Assembler {
 		const fitsUnsigned16 = (value: number) => value >= 0 && value <= 0xffff
 		/**
 		 * Puts `value` in `$at`, in one instruction when it fits the immediate
-		 * field, as the THRAX pseudo-op table does.
+		 * field.
 		 */
 		const valueInAt = (value: number): MipsInstruction[] =>
 			fitsSigned16(value)
 				? [make('ADDI', [reg('$at'), reg('$zero'), immediate(value)])]
 				: loadAt(value >>> 0)
 		/**
-		 * `op rd, rs, imm`.  THRAX folds the immediate into the I-type form when
+		 * `op rd, rs, imm`.  The immediate folds into the I-type form when
 		 * one exists and the value fits its field, and otherwise routes the value
 		 * through `$at` and uses the register form.
 		 */
@@ -390,13 +728,35 @@ export class Assembler {
 		/**
 		 * Presents `arg` as a register, materializing a constant into `$at` first.
 		 * The set and branch pseudo-ops are written against registers, so this is
-		 * how THRAX lets a constant stand in one of their operand positions.
+		 * how a constant stands in one of their operand positions.
 		 */
 		const materialize = (arg: MipsArgument): { setup: MipsInstruction[]; operand: MipsArgument } =>
 			isImmediate(arg) ? { setup: valueInAt(arg.value), operand: reg('$at') } : { setup: [], operand: arg }
-		/** `div`/`rem` in their three-operand form: divide, then take a result. */
+		/** The constant the `set` pseudo-ops invert a comparison against. */
+		const one = (): MipsInstruction[] => [make('ORI', [reg('$at'), reg('$zero'), immediate(1)])]
+		/**
+		 * A branch over `body`, which the checked pseudo-ops use to skip a
+		 * `break`.  The offset is in words and counts the delay slot when there
+		 * is one, which the expansion table spells `BROFFnm`.
+		 */
+		const skipping = (branch: MipsInstruction, body: MipsInstruction[]): MipsInstruction[] => {
+			const delaySlot = this.delayedBranching ? [make('NOP', [])] : []
+			branch.args.push(immediate(delaySlot.length + body.length))
+			return [branch, ...delaySlot, ...body]
+		}
+		/**
+		 * `div`/`rem` in their three-operand form: divide, then take a result.
+		 * A register divisor is checked against zero first;
+		 * a constant one is known (`:226`).
+		 */
 		const divideInto = (divide: string, take: string): MipsInstruction[] => {
-			if (!isImmediate(third)) return [make(divide, [second, third]), make(take, [first])]
+			if (!isImmediate(third)) {
+				return [
+					...skipping(make('BNE', [third, reg('$zero')]), [make('BREAK', [])]),
+					make(divide, [second, third]),
+					make(take, [first]),
+				]
+			}
 			return [...valueInAt(third.value), make(divide, [second, reg('$at')]), make(take, [first])]
 		}
 		/** Rotate by assembling the two halves of the shift and merging them. */
@@ -423,45 +783,68 @@ export class Assembler {
 			if (number === null) return { type: 'register', value: `$f${fpRegisterNumber(arg.value) + 1}` }
 			return reg(REGISTER_NAMES[(number + 1) % 32])
 		}
-		/** `ld`/`sd` move a register pair to or from two consecutive words. */
-		const doubleword = (transfer: string): MipsInstruction[] => {
-			const pair = (offset: number, base: string): MipsInstruction[] => [
-				make(transfer, [first, { type: 'memory', offset: { type: 'immediate', value: offset }, register: base }]),
-				make(transfer, [nextRegister(first), { type: 'memory', offset: { type: 'immediate', value: offset + 4 }, register: base }]),
-			]
-			if (typeof second === 'object' && second.type === 'memory') {
-				const offset = second.offset.type === 'immediate' ? second.offset.value : 0
-				return pair(offset, second.register)
-			}
-			// A label or absolute address does not fit an offset field, so the
-			// address goes through $at and both words are read relative to it.
-			if (typeof second === 'object' && second.type === 'label') {
-				return [make('LUI', [reg('$at'), second]), make('ORI', [reg('$at'), reg('$at'), second]), ...pair(0, '$at')]
-			}
-			if (isImmediate(second)) return [...loadAt(second.value >>> 0), ...pair(0, '$at')]
-			throw new AssemblyError(`${instruction.name} needs an address operand`, atInstruction(instruction))
-		}
 		/**
-		 * A load/store target as an offset(base) operand, `delta` bytes on.  The
-		 * unaligned transfers touch one address several times and clobber `$at`
-		 * in between, so the setup is re-emitted per access rather than kept.
+		 * A load/store target as an offset(base) operand, `delta` bytes on.
+		 *
+		 * Every extended address form in has the same
+		 * shape: the high half of the address goes in `$at`, the base register is
+		 * added to it when there is one, and the low half stays in the
+		 * instruction's own offset field.  The high half carries a 1 when bit 15
+		 * of the address is set, since the low half is added back signed
+		 *.
+		 *
+		 * The unaligned transfers touch one address several times and clobber
+		 * `$at` in between, so the setup is re-emitted per access rather than
+		 * kept.
 		 */
 		const addressParts = (target: MipsArgument, delta: number): { setup: MipsInstruction[]; operand: MipsArgument } => {
-			const throughRegister = (setup: MipsInstruction[], base?: string) => ({
-				setup: [...setup, ...(base ? [make('ADDU', [reg('$at'), reg('$at'), reg(base)])] : [])],
+			const addBase = (base?: string) => (base ? [make('ADDU', [reg('$at'), reg('$at'), reg(base)])] : [])
+			/** `lui $at, high; op rt, low($at)`, the general form. */
+			const split = (value: number, base?: string) => ({
+				setup: [make('LUI', [reg('$at'), immediate(highHalf(value))]), ...addBase(base)],
+				operand: memory(lowHalf(value), '$at'),
+			})
+			/** The same for a label, whose halves are only known after layout. */
+			const splitLabel = (label: LabelArgument, base?: string) => {
+				const shifted: LabelArgument = { ...label, offset: (label.offset ?? 0) + delta }
+				const lui = make('LUI', [reg('$at'), shifted])
+				this.adjustedHighHalves.add(lui)
+				const operand: MipsArgument = { type: 'memory', offset: shifted, register: '$at' }
+				return { setup: [lui, ...addBase(base)], operand }
+			}
+			/** A 16-bit unsigned address needs no `lui`. */
+			const throughOri = (value: number, base?: string) => ({
+				setup: [make('ORI', [reg('$at'), reg('$zero'), immediate(value)]), ...addBase(base)],
 				operand: memory(0, '$at'),
 			})
-			const address = (arg: ImmediateArgument | LabelArgument, base?: string) => {
-				if (arg.type === 'immediate') return throughRegister(loadAt((arg.value + delta) >>> 0), base)
-				const shifted: LabelArgument = { ...arg, offset: (arg.offset ?? 0) + delta }
-				return throughRegister([make('LUI', [reg('$at'), shifted]), make('ORI', [reg('$at'), reg('$at'), shifted])], base)
+			const value = (amount: number, base?: string) => {
+				if (delta === 0 && !base && fitsSigned16(amount)) return { setup: [], operand: memory(amount, '$zero') }
+				if (delta === 0 && fitsUnsigned16(amount)) return throughOri(amount, base)
+				return split(amount + delta, base)
 			}
+
 			if (typeof target === 'object' && target.type === 'memory') {
-				if (target.offset.type !== 'immediate') return address(target.offset, target.register)
-				return { setup: [], operand: memory(target.offset.value + delta, target.register) }
+				if (target.offset.type === 'label') return splitLabel(target.offset, target.register)
+				const offset = target.offset.value
+				// An offset the field already holds stays there, and so do the
+				// three bytes past a `($t2)` operand.
+				if (fitsSigned16(offset) && (delta === 0 || offset === 0)) {
+					return { setup: [], operand: memory(offset + delta, target.register) }
+				}
+				return value(offset, target.register)
 			}
-			if (typeof target === 'object' && (target.type === 'immediate' || target.type === 'label')) return address(target)
+			if (isImmediate(target)) return value(target.value)
+			if (typeof target === 'object' && target.type === 'label') return splitLabel(target)
 			throw new AssemblyError(`${instruction.name} needs an address operand`, atInstruction(instruction))
+		}
+		/** `ld`/`sd` move a register pair to or from two consecutive words. */
+		const doubleword = (transfer: string): MipsInstruction[] => {
+			const start = addressParts(second, 0)
+			const next = addressParts(second, 4)
+			return [
+				...start.setup, make(transfer, [first, start.operand]),
+				...next.setup, make(transfer, [nextRegister(first), next.operand]),
+			]
 		}
 		/** `ulw`/`usw`: the halves of a word that straddles an alignment boundary. */
 		const unalignedWord = (high: string, low: string): MipsInstruction[] => {
@@ -518,32 +901,54 @@ export class Assembler {
 				make('MFLO', [first]),
 			]
 		}
+		/** One load or store, with whatever it takes to reach its address. */
+		const transfer = (name: string): MipsInstruction[] => {
+			const { setup, operand } = addressParts(second, 0)
+			return [...setup, make(name, [first, operand])]
+		}
 		/**
-		 * `lw $t0, label` and `l.s $f0, label` name an address that does not fit
-		 * an instruction's 16-bit offset field, so the address goes through `$at`.
+		 * `la`, which computes an address rather than using one.  Its low half is
+		 * added back by `ori`, unsigned, so its high half never carries the bit-15
+		 * adjustment a load's does.
 		 */
-		const throughAt = (name: string, register: MipsArgument, target: MipsArgument): MipsInstruction[] => {
-			if (typeof target !== 'object' || target.type !== 'label') return [make(name, [register, target])]
-			return [
-				make('LUI', [reg('$at'), target]),
-				make('ORI', [reg('$at'), reg('$at'), target]),
-				make(name, [register, { type: 'memory', offset: { type: 'immediate', value: 0 }, register: '$at' }]),
-			]
+		const loadAddress = (): MipsInstruction[] => {
+			const based = typeof second === 'object' && second.type === 'memory'
+			const base = based ? (second as { register: string }).register : null
+			const target = based ? (second as { offset: MipsArgument }).offset : second
+			// With a base register the halves land in $at and are added to it.
+			const destination = base ? reg('$at') : first
+			const withBase = (built: MipsInstruction[]) =>
+				base ? [...built, make('ADD', [first, reg(base), reg('$at')])] : built
+			if (isImmediate(target)) {
+				// `la $t1,($t2)` is the base register itself.
+				if (base && target.value === 0) return [make('ADDI', [first, reg(base), immediate(0)])]
+				if (!base && fitsSigned16(target.value)) return [make('ADDIU', [first, reg('$zero'), target])]
+				if (fitsUnsigned16(target.value)) return withBase([make('ORI', [destination, reg('$zero'), target])])
+				return withBase([
+					make('LUI', [reg('$at'), immediate(target.value >>> 16)]),
+					make('ORI', [destination, reg('$at'), immediate(target.value & 0xffff)]),
+				])
+			}
+			if (typeof target === 'object' && target.type === 'label') {
+				return withBase([make('LUI', [reg('$at'), target]), make('ORI', [destination, reg('$at'), target])])
+			}
+			throw new AssemblyError('la needs an address operand', atInstruction(instruction))
 		}
 
 		switch (instruction.name) {
 			case 'NOP': return [make('SLL', [reg('$zero'), reg('$zero'), immediate(0)])]
-			case 'MOVE': return [make('ADDU', [first, second, reg('$zero')])]
+			case 'MOVE': return [make('ADDU', [first, reg('$zero'), second])]
 			case 'LI': {
 				if (second?.type !== 'immediate') throw new AssemblyError('li requires an immediate value', atInstruction(instruction))
-				if (second.value >= -0x8000 && second.value <= 0x7fff) return [make('ADDIU', [first, reg('$zero'), second])]
+				if (fitsSigned16(second.value)) return [make('ADDIU', [first, reg('$zero'), second])]
+				if (fitsUnsigned16(second.value)) return [make('ORI', [first, reg('$zero'), second])]
 				return [
-					make('LUI', [first, immediate(second.value >>> 16)]),
-					make('ORI', [first, first, immediate(second.value & 0xffff)]),
+					make('LUI', [reg('$at'), immediate(second.value >>> 16)]),
+					make('ORI', [first, reg('$at'), immediate(second.value & 0xffff)]),
 				]
 			}
-			case 'LA': return [make('LUI', [first, second]), make('ORI', [first, first, second])]
-			case 'B': return [make('BEQ', [reg('$zero'), reg('$zero'), first])]
+			case 'LA': return loadAddress()
+			case 'B': return [make('BGEZ', [reg('$zero'), first])]
 			case 'BAL': return [make('JAL', [first])]
 			case 'BEQZ': return [make('BEQ', [first, reg('$zero'), second])]
 			case 'BNEZ': return [make('BNE', [first, reg('$zero'), second])]
@@ -551,35 +956,59 @@ export class Assembler {
 			case 'BGE':
 			case 'BLTU':
 			case 'BGEU': {
-				const { setup, operand } = materialize(second)
-				const compare = instruction.name.endsWith('U') ? 'SLTU' : 'SLT'
+				const unsigned = instruction.name.endsWith('U')
 				const branch = instruction.name.startsWith('BLT') ? 'BNE' : 'BEQ'
-				return [...setup, make(compare, [reg('$at'), first, operand]), make(branch, [reg('$at'), reg('$zero'), third])]
+				const test = isImmediate(second) && fitsSigned16(second.value)
+					// A 16-bit constant compares in the `slti` field itself.
+					? [make(unsigned ? 'SLTIU' : 'SLTI', [reg('$at'), first, second])]
+					: (({ setup, operand }) => [...setup, make(unsigned ? 'SLTU' : 'SLT', [reg('$at'), first, operand])])(materialize(second))
+				return [...test, make(branch, [reg('$at'), reg('$zero'), third])]
 			}
-			case 'BLE':
-			case 'BGT':
 			case 'BLEU':
 			case 'BGTU': {
 				const { setup, operand } = materialize(second)
-				const compare = instruction.name.endsWith('U') ? 'SLTU' : 'SLT'
-				const branch = instruction.name.startsWith('BGT') ? 'BNE' : 'BEQ'
-				return [...setup, make(compare, [reg('$at'), operand, first]), make(branch, [reg('$at'), reg('$zero'), third])]
+				const branch = instruction.name === 'BGTU' ? 'BNE' : 'BEQ'
+				return [...setup, make('SLTU', [reg('$at'), operand, first]), make(branch, [reg('$at'), reg('$zero'), third])]
+			}
+			// The signed pair compares the other way round for a 32-bit constant:
+			// `x > c` is `!(x < c+1)`.
+			case 'BLE':
+			case 'BGT': {
+				const greater = instruction.name === 'BGT'
+				if (isImmediate(second) && !fitsSigned16(second.value)) {
+					return [
+						...loadAt((second.value + 1) >>> 0),
+						make('SLT', [reg('$at'), first, reg('$at')]),
+						make(greater ? 'BEQ' : 'BNE', [reg('$at'), reg('$zero'), third]),
+					]
+				}
+				// `x <= c` is `x - 1 < c` for a 16-bit constant (`:214`).
+				if (!greater && isImmediate(second)) {
+					return [
+						make('ADDI', [reg('$at'), first, immediate(-1)]),
+						make('SLTI', [reg('$at'), reg('$at'), second]),
+						make('BNE', [reg('$at'), reg('$zero'), third]),
+					]
+				}
+				const { setup, operand } = materialize(second)
+				return [...setup, make('SLT', [reg('$at'), operand, first]), make(greater ? 'BNE' : 'BEQ', [reg('$at'), reg('$zero'), third])]
 			}
 			case 'NOT': return [make('NOR', [first, second, reg('$zero')])]
 			case 'NEG': return [make('SUB', [first, reg('$zero'), second])]
 			case 'NEGU': return [make('SUBU', [first, reg('$zero'), second])]
 			case 'ABS': return [
 				make('SRA', [reg('$at'), second, immediate(31)]),
-				make('XOR', [first, second, reg('$at')]),
+				make('XOR', [first, reg('$at'), second]),
 				make('SUBU', [first, first, reg('$at')]),
 			]
 			case 'SEQ':
 			case 'SNE': {
 				const { setup, operand } = materialize(third)
+				// The difference is zero exactly when the two are equal.
 				const finish = instruction.name === 'SEQ'
-					? make('SLTIU', [first, first, immediate(1)])
-					: make('SLTU', [first, reg('$zero'), first])
-				return [...setup, make('XOR', [first, second, operand]), finish]
+					? [...one(), make('SLTU', [first, first, reg('$at')])]
+					: [make('SLTU', [first, reg('$zero'), first])]
+				return [...setup, make('SUBU', [first, second, operand]), ...finish]
 			}
 			case 'SGT':
 			case 'SGTU': {
@@ -594,12 +1023,12 @@ export class Assembler {
 				const compare = instruction.name.endsWith('U') ? 'SLTU' : 'SLT'
 				// `x >= y` is `!(x < y)`; `x <= y` is `!(y < x)`.
 				const args = instruction.name.startsWith('SGE') ? [first, second, operand] : [first, operand, second]
-				return [...setup, make(compare, args), make('XORI', [first, first, immediate(1)])]
+				return [...setup, make(compare, args), ...one(), make('SUBU', [first, reg('$at'), first])]
 			}
-			case 'L.S': return throughAt('LWC1', first, second)
-			case 'L.D': return throughAt('LDC1', first, second)
-			case 'S.S': return throughAt('SWC1', first, second)
-			case 'S.D': return throughAt('SDC1', first, second)
+			case 'L.S': return transfer('LWC1')
+			case 'L.D': return transfer('LDC1')
+			case 'S.S': return transfer('SWC1')
+			case 'S.D': return transfer('SDC1')
 			case 'LWC1':
 			case 'LDC1':
 			case 'SWC1':
@@ -618,7 +1047,7 @@ export class Assembler {
 			case 'LWR':
 			case 'SWL':
 			case 'SWR':
-				return throughAt(instruction.name, first, second)
+				return transfer(instruction.name)
 			case 'ULW': return unalignedWord('LWL', 'LWR')
 			case 'USW': return unalignedWord('SWL', 'SWR')
 			case 'ULH': return unalignedHalf('LB')
@@ -654,8 +1083,8 @@ export class Assembler {
 				make('MFLO', [first]),
 			]
 
-			// An immediate where a register belongs.  THRAX accepts these and
-			// widens them; dropping the operand would assemble a wrong answer.
+			// An immediate where a register belongs.  These are accepted and
+			// widened; dropping the operand would assemble a wrong answer.
 			case 'ADD': return withImmediate('ADD', 'ADDI', false, first, second, third)
 			case 'ADDU': return withImmediate('ADDU', 'ADDIU', false, first, second, third)
 			case 'ADDI': return withImmediate('ADD', 'ADDI', false, first, second, third)
@@ -680,7 +1109,9 @@ export class Assembler {
 			case 'BEQ':
 			case 'BNE': {
 				if (!isImmediate(second)) return [instruction]
-				return [...valueInAt(second.value), make(instruction.name, [first, reg('$at'), third])]
+				// The comparison is `$at` against the register, in that order
+				//.
+				return [...valueInAt(second.value), make(instruction.name, [reg('$at'), first, third])]
 			}
 
 			case 'ROL': return rotate('SLL', 'SRL')
@@ -798,8 +1229,48 @@ export class Assembler {
 			return 0x0000000c
 			case 'BREAK':
 				return (((this.getImmediateValue(args[0]) & 0xfffff) << 6) | 0x0d) >>> 0
-			default:
+			default: {
+				const encoded = this.encodeFromTable(name, args)
+				if (encoded !== null) return encoded
 				throw new AssemblyError(`Unknown instruction: ${name}`, this.instructionPosition())
+			}
+		}
+	}
+
+	/**
+	 * Encodes straight from the isa table: the form's fixed bits, then each
+	 * operand into the run of `f`, `s` or `t` its bit pattern names.  The letters
+	 * bind to the operands in order, and a `mem` operand spends two of them, its
+	 * offset then its base register.  Null when
+	 * no form of `name` fits these operands.
+	 */
+	encodeFromTable(name: string, args: MipsArgument[]): number | null {
+		const form = basicForms(name).find((candidate) => matchesSignature(candidate, args))
+		if (!form) return null
+
+		const values = form.operands.flatMap((kind, index) => this.operandBits(kind, args[index]))
+		let word = form.match
+		form.fields.forEach((field, index) => {
+			const mask = (2 ** field.width - 1) >>> 0
+			word = (word | (((values[index] ?? 0) & mask) << field.shift)) >>> 0
+		})
+		return word >>> 0
+	}
+
+	/** The bits one operand contributes, in the order its pattern letters run. */
+	operandBits(kind: IsaOperandKind, arg: MipsArgument): number[] {
+		switch (kind) {
+			case 'gpr': return [this.getRegisterNumber(arg)]
+			case 'cp0': return [this.getCp0RegisterNumber(arg)]
+			case 'fpr':
+			case 'fpr-even': return [this.getFpRegisterNumber(arg)]
+			// A basic form spells a label only as a branch target.
+			case 'label': return [this.getBranchOffset(arg)]
+			case 'target26': return [this.getJumpAddress(arg) >>> 2]
+			case 'mem': return arg.type === 'memory'
+				? [this.getImmediateValue(arg.offset), this.getRegisterNumber(arg.register)]
+				: [this.getImmediateValue(arg), 0]
+			default: return [this.getImmediateValue(arg)]
 		}
 	}
 
@@ -828,18 +1299,6 @@ export class Assembler {
 			return ((COP1_OPCODE << 26) | ((name === 'MTC1' ? 4 : 0) << 21) | (rt << 16) | (fs << 11)) >>> 0
 		}
 
-		// Condition code 0 is the only flag the assembler's syntax reaches.
-		if (name === 'BC1T' || name === 'BC1F') {
-			const offset = this.getBranchOffset(args[0]) & 0xffff
-			return ((COP1_OPCODE << 26) | (8 << 21) | ((name === 'BC1T' ? 1 : 0) << 16) | offset) >>> 0
-		}
-
-		if (name === 'MOVF' || name === 'MOVT') {
-			const rd = this.getRegisterNumber(args[0])
-			const rs = this.getRegisterNumber(args[1])
-			return ((rs << 21) | ((name === 'MOVT' ? 1 : 0) << 16) | (rd << 11) | 0x01) >>> 0
-		}
-
 		const parts = name.split('.')
 		const format = FP_FORMAT_CODES[parts[parts.length - 1]]
 		if (format === undefined) return null
@@ -852,16 +1311,6 @@ export class Assembler {
 				this.getFpRegisterNumber(args[1]),
 				this.getFpRegisterNumber(args[0]),
 				FP_ARITHMETIC_FUNCTIONS[parts[0]],
-			)
-		}
-
-		if (parts.length === 3 && parts[0] === 'C' && FP_COMPARE_FUNCTIONS[parts[1]] !== undefined) {
-			return this.encodeCop1(
-				format,
-				this.getFpRegisterNumber(args[1]),
-				this.getFpRegisterNumber(args[0]),
-				0,
-				FP_COMPARE_FUNCTIONS[parts[1]],
 			)
 		}
 
@@ -1028,7 +1477,7 @@ export class Assembler {
 
 	resolveArgument(arg: MipsArgument): MipsArgument {
 		if (arg.type === 'label') {
-			return { ...arg, address: this.labelAddress(this.program!.labels, arg) }
+			return { ...arg, address: this.labelAddress(this.currentInstruction?.unit ?? '', arg) }
 		}
 		if (arg.type === 'memory') {
 			const offset = this.resolveArgument(arg.offset)

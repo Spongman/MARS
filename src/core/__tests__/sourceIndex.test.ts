@@ -54,6 +54,19 @@ describe('source index', () => {
 		expect(index.hasCode('nowhere.asm')).toBe(false)
 	})
 
+	it('lists every file that assembled to something', () => {
+		const files = [
+			{ name: 'main.asm', code: 'main:\n\tjal helper\n' },
+			{ name: 'lib.asm', code: 'helper:\n\tjr $ra\n\t.globl helper\n' },
+		]
+		const index = check(new Assembler(files, ['main.asm', 'lib.asm']).assemble()).program.sourceIndex
+
+		// Nothing else can enumerate the assembled files; the text segment table
+		// needs them to show a row per word of the whole program.
+		expect([...index.files()]).toEqual(['main.asm', 'lib.asm'])
+		expect([...indexOf('main:\n\tnop\n').files()]).toEqual([''])
+	})
+
 	it('spreads a data directive over one row per word', () => {
 		const index = indexOf('\t.data\nmsg:\t.asciiz "hello"\n\t.text\nmain:\tnop\n')
 
