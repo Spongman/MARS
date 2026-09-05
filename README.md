@@ -218,52 +218,54 @@ src/
 
 ## 📚 Roadmap
 
-### Completed ✅
-- [x] Core MIPS assembler and simulator
-- [x] All basic instruction types (R, I, J)
-- [x] Arithmetic operations
-- [x] Logical operations
-- [x] Load/store operations
-- [x] Branch and jump instructions
+### Done ✅
+
+**The machine**
+- [x] Core MIPS assembler and simulator, with error reporting on the line that earned it
+- [x] All basic instruction types (R, I, J): arithmetic, logical, shifts, comparison, load/store, branch and jump
 - [x] Multiply/divide with HI/LO registers
-- [x] Syscall handling (print int, char, exit)
-- [x] Monaco Editor integration
-- [x] Register and memory viewers
-- [x] Example programs
-- [x] Error reporting
-- [x] MIPS syntax highlighting
-
-### In Progress 🔄
-- [x] Step-through debugging, stepping back, and rewinding to any point
-- [x] Breakpoint support
-- [x] Call stack viewer
-- [x] Bitmap display tool (24-bit RGB words, configurable base address)
-- [x] Keyboard/display MMIO tool (receiver/transmitter data registers)
-- [x] Interactive input (syscalls 5, 8, 12)
+- [x] Floating-point instructions (coprocessor 1) and the coprocessor 0 registers
+- [x] Every MARS syscall except the MIDI pair, interactive input included (5, 8, 12)
 - [x] Assembly directives and initialized data segments
-
-### Planned 🎯
-- [x] Floating-point instructions (coprocessor 1) and coprocessor 0 registers
-- [x] Cache simulation (configurable blocks, associativity, and replacement)
-- [x] Pipeline visualization (five-stage timeline with per-cycle stages)
-- [x] Data hazard detection (RAW, with and without forwarding)
-- [x] Control hazard visualization (branch and jump resolved in ID, EX, or MEM)
-- [x] Branch prediction in the pipeline (static, 1-bit, and 2-bit)
-- [x] Instruction statistics and branch prediction (BHT) tools
-- [x] MIPS X-Ray: the animated datapath, control unit, ALU control, and register bank, drawn as themed SVG
-- [x] Delayed branching
-- [ ] Assembly program templates
-- [x] Save/load programs to browser storage
-- [x] Export machine code to HexText
-- [ ] Dark/light theme toggle
-- [x] Keyboard shortcuts
-- [ ] Mobile responsive design
-- [x] Multiple source tabs, assembled together or one at a time
-- [x] Per-file symbol tables, with `.globl` naming what crosses a file
+- [x] Macros, `.include`, `.eqv`, and label expressions
 - [x] The three MARS memory configurations
+- [x] Delayed branching
+- [x] Device interrupts, taken in place of the next instruction
+
+**The workspace**
+- [x] Monaco editor with MIPS syntax highlighting, multiple source tabs, and find/replace
+- [x] Multi-file programs: assembled together or one at a time, with per-file symbol tables and `.globl` naming what crosses a file
+- [x] Register, memory, call stack, symbol and history panels, dockable and saved between sessions
+- [x] Step-through debugging, breakpoints, stepping back, and rewinding to any point
 - [x] Execution history: every instruction, what it changed, and time travel through it
 - [x] Editing registers and memory by hand, undoable like anything else
+- [x] Cross-panel navigation: an address or register lights wherever else it appears
 - [x] Settings dialog covering the MARS options
+- [x] Save/load programs to browser storage, and export machine code to HexText
+- [x] Keyboard shortcuts, and example programs
+
+**The tools**
+- [x] Bitmap display (24-bit RGB words, configurable base address)
+- [x] Keyboard/display MMIO (receiver/transmitter data registers)
+- [x] Cache simulation (configurable blocks, associativity, and replacement)
+- [x] Pipeline model: five-stage timeline, RAW hazards with and without forwarding, branch and jump resolved in ID, EX or MEM, and static, 1-bit and 2-bit prediction
+- [x] Instruction statistics and the branch history table
+- [x] MIPS X-Ray: the animated datapath, control unit, ALU control, and register bank, drawn as themed SVG
+- [x] Memory reference visualization, Mars Bot, Scavenger Hunt, and the Digital Lab Simulator
+- [x] A tool watches a run only while a panel wants it, and rewinds with the history
+
+### Open 🎯
+- [ ] Trim the bundle: 4.8 MB minified, 1.26 MB gzipped, most of it Monaco
+- [ ] Take the Digital Lab's memory-mapped region from the chosen memory configuration rather than fixing it at `0xffff0000`
+- [ ] A tooltip on a gutter address, to match the "Show 0x… in memory" the expanded words below it offer
+- [ ] One mechanism for "written in place, so a selector would never see a change", rather than a version counter beside a wrapper
+- [ ] A committed browser harness: what the layout decides is checked by hand today and not repeated
+- [ ] Assembly program templates
+- [ ] Dark/light theme toggle
+- [ ] Mobile responsive design
+
+The working notes behind these, and the decisions taken not to do other things,
+are in [PLAN.md](PLAN.md).
 
 ### Future Enhancements 🚀
 - [ ] Collaborative editing
