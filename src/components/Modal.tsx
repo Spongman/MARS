@@ -161,6 +161,14 @@ function Modal({ title, onClose, children, footer, className, movable = false, p
 		startGesture(event, (from, dx, dy) => resizeFrame(from, dx, dy))
 	}
 
+	// Read through a ref so the trap below is set up once, when the dialog opens.
+	// A caller that passes a fresh `onClose` on every render is ordinary, and
+	// re-running the trap for it moved focus to the first control: typing in a
+	// field published a setting, which re-rendered the caller, which took the
+	// cursor to the close button between one keystroke and the next.
+	const onCloseRef = React.useRef(onClose)
+	onCloseRef.current = onClose
+
 	React.useEffect(() => {
 		// Whatever opened the dialog gets focus back when it closes.
 		const opener = document.activeElement as HTMLElement | null
@@ -176,7 +184,7 @@ function Modal({ title, onClose, children, footer, className, movable = false, p
 			})
 			if (action === null) return
 			event.preventDefault()
-			if (action === 'close') onClose()
+			if (action === 'close') onCloseRef.current()
 			else if (action === 'wrap-first') items[0]?.focus()
 			else items[items.length - 1]?.focus()
 		}
@@ -186,7 +194,7 @@ function Modal({ title, onClose, children, footer, className, movable = false, p
 			document.removeEventListener('keydown', onKeyDown)
 			opener?.focus()
 		}
-	}, [onClose])
+	}, [])
 
 	return createPortal(
 		<div
