@@ -69,12 +69,19 @@ function fakeRegistry() {
 /** Only the observer list matters to the registry, so a stand-in will do. */
 const fakeSimulator = () => ({ observers: [] as ExecutionObserver[] })
 
+/** Every tool of the real registry, for the tests that assert on all of them. */
+const EVERY_TOOL = new Set([
+	'statistics', 'profile', 'cache', 'branchHistory', 'pipeline',
+	'memoryReference', 'marsBot', 'digitalLab', 'scavengerHunt',
+])
+
 describe('tool registry', () => {
 	beforeEach(() => store.clear())
 
-	it('starts every tool on the machine it is attached to', () => {
+	it('starts every wanted tool on the machine it is attached to', () => {
 		const { tool, other, registry } = fakeRegistry()
 		const simulator = fakeSimulator()
+		registry.setWanted(new Set(['fake', 'other']))
 		registry.attach(simulator, { delayedBranching: true })
 
 		expect(tool.resets).toBe(1)
@@ -87,6 +94,7 @@ describe('tool registry', () => {
 	it('reaches the tools through the observer interface alone', () => {
 		const { tool, registry } = fakeRegistry()
 		const simulator = fakeSimulator()
+		registry.setWanted(new Set(['fake', 'other']))
 		registry.attach(simulator, { delayedBranching: false })
 
 		const observer = simulator.observers[0]
@@ -100,6 +108,7 @@ describe('tool registry', () => {
 	it('re-snapshots only the tools that saw something', () => {
 		const { registry } = fakeRegistry()
 		const simulator = fakeSimulator()
+		registry.setWanted(new Set(['fake', 'other']))
 		registry.attach(simulator, { delayedBranching: false })
 
 		const first = registry.views()
@@ -139,6 +148,7 @@ describe('tool registry', () => {
 		const pipeline = new PipelineModel()
 		const registry = new ToolRegistry([{ key: 'pipeline', tool: pipeline }] as const)
 
+		registry.setWanted(new Set(['pipeline']))
 		registry.attach(fakeSimulator(), { delayedBranching: true })
 		expect(pipeline.delaySlots).toBe(true)
 
@@ -149,6 +159,7 @@ describe('tool registry', () => {
 	it('collects and clears the readings of every registered tool', async () => {
 		const registry = createToolRegistry()
 		const simulator = build(withExit('li $t0, 2\nloop:\naddi $t0, $t0, -1\nsw $t0, 0($sp)\nlw $t1, 0($sp)\nbne $t0, $zero, loop'))
+		registry.setWanted(EVERY_TOOL)
 		registry.attach(simulator, { delayedBranching: false })
 		await simulator.run()
 
@@ -179,6 +190,7 @@ describe('tool registry', () => {
 			sw $t1, 0($t0)
 			lw $t2, 0($t0)
 		`))
+		registry.setWanted(EVERY_TOOL)
 		registry.attach(simulator, { delayedBranching: false })
 		await simulator.run()
 
@@ -215,5 +227,45 @@ describe('tool registry', () => {
 		store.set('thrax-web.settings.tools.memoryReference', '{"rows":0,"columns":8}')
 		const registry = createToolRegistry()
 		expect(registry.loadSettings().memoryReference).toEqual(DEFAULT_MEMORY_REFERENCE_SETTINGS)
+	})
+
+	it('leaves a tool nobody asked for off the run', async () => {
+		// Watching is not free: the observer call lands on every instruction, and
+		// the pipeline model copies its own state on each one.  The whole set
+		// attached made a run twenty-five times slower with no panel open.
+		const registry = createToolRegistry()
+		const simulator = build(withExit(`li $t0, 2
+loop:
+addi $t0, $t0, -1
+bne $t0, $zero, loop`))
+		registry.setWanted(new Set(['statistics']))
+		registry.attach(simulator, { delayedBranching: false })
+		await simulator.run()
+
+		const ran = registry.views()
+		expect(ran.statistics.total).toBe(simulator.instructionCount)
+		expect(ran.pipeline.instructions).toBe(0)
+		expect(ran.profile.total).toBe(0)
+	})
+
+	it('starts a tool asked for mid-run from nothing, and stops one dropped', async () => {
+		const registry = createToolRegistry()
+		const simulator = build(withExit(`li $t0, 2
+loop:
+addi $t0, $t0, -1
+bne $t0, $zero, loop`))
+		registry.attach(simulator, { delayedBranching: false })
+		await simulator.run()
+		expect(registry.views().statistics.total).toBe(0)
+
+		// Opening its panel starts it: it did not see what came before, so it says
+		// nothing about it rather than guessing.
+		registry.setWanted(new Set(['statistics']))
+		expect(registry.views().statistics.total).toBe(0)
+
+		registry.setWanted(new Set())
+		const observers = simulator.observers.length
+		registry.setWanted(new Set())
+		expect(simulator.observers).toHaveLength(observers)
 	})
 })

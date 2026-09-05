@@ -1,3 +1,4 @@
+import { Op, opFor } from '../../core/ops'
 import { describe, expect, it } from 'vitest'
 import { BranchHistoryTable } from '../branchHistory'
 import { CacheSimulator } from '../cache'
@@ -29,21 +30,21 @@ describe('instruction statistics', () => {
 		await simulator.run()
 
 		const counts = new Map(statistics.snapshot().byMnemonic.map((entry) => [entry.op, entry.count]))
-		expect(counts.get('ADDI')).toBe(3)
-		expect(counts.get('BNE')).toBe(3)
+		expect(counts.get('addi')).toBe(3)
+		expect(counts.get('bne')).toBe(3)
 		expect(statistics.snapshot().byMnemonic[0].count).toBeGreaterThanOrEqual(3)
 	})
 
 	it('files coprocessor work under its own category', () => {
-		expect(categoryOf('ADD.S')).toBe('coprocessor')
-		expect(categoryOf('MFC1')).toBe('coprocessor')
-		expect(categoryOf('ADD')).toBe('alu')
-		expect(categoryOf('SYSCALL')).toBe('other')
+		expect(categoryOf(Op.ADD_S)).toBe('coprocessor')
+		expect(categoryOf(Op.MFC1)).toBe('coprocessor')
+		expect(categoryOf(Op.ADD)).toBe('alu')
+		expect(categoryOf(Op.SYSCALL)).toBe('other')
 	})
 
 	it('files the unaligned and atomic accesses under memory', () => {
 		for (const op of ['LWL', 'LWR', 'SWL', 'SWR', 'LL', 'SC']) {
-			expect(categoryOf(op)).toBe('memory')
+			expect(categoryOf(opFor(op)!)).toBe('memory')
 		}
 	})
 
@@ -51,29 +52,29 @@ describe('instruction statistics', () => {
 	// through to 'other' (or, for the MOV family, were accidentally swept into
 	// 'coprocessor' by the 'MOV' prefix check).
 	it('files branch-and-link with the other branches', () => {
-		expect(categoryOf('BGEZAL')).toBe('branch')
-		expect(categoryOf('BLTZAL')).toBe('branch')
+		expect(categoryOf(Op.BGEZAL)).toBe('branch')
+		expect(categoryOf(Op.BLTZAL)).toBe('branch')
 	})
 
 	it('files bit-counting and multiply-accumulate as ALU work', () => {
 		for (const op of ['CLO', 'CLZ', 'MADD', 'MADDU', 'MSUB', 'MSUBU']) {
-			expect(categoryOf(op)).toBe('alu')
+			expect(categoryOf(opFor(op)!)).toBe('alu')
 		}
 	})
 
 	it('splits conditional moves by which register file they write', () => {
 		// GPR-to-GPR: no FPU or CP0 involved, so ALU, not coprocessor.
-		expect(categoryOf('MOVN')).toBe('alu')
-		expect(categoryOf('MOVZ')).toBe('alu')
+		expect(categoryOf(Op.MOVN)).toBe('alu')
+		expect(categoryOf(Op.MOVZ)).toBe('alu')
 		// FP-register moves, gated on either a GPR or an FP condition code.
 		for (const op of ['MOVN.S', 'MOVN.D', 'MOVZ.S', 'MOVZ.D', 'MOVF.S', 'MOVF.D', 'MOVT.S', 'MOVT.D']) {
-			expect(categoryOf(op)).toBe('coprocessor')
+			expect(categoryOf(opFor(op)!)).toBe('coprocessor')
 		}
 	})
 
 	it('gives the twelve traps their own category', () => {
 		const traps = ['TEQ', 'TEQI', 'TGE', 'TGEU', 'TGEI', 'TGEIU', 'TLT', 'TLTU', 'TLTI', 'TLTIU', 'TNE', 'TNEI']
-		for (const op of traps) expect(categoryOf(op)).toBe('trap')
+		for (const op of traps) expect(categoryOf(opFor(op)!)).toBe('trap')
 	})
 })
 
@@ -201,12 +202,12 @@ describe('pipeline profile', () => {
 		await simulator.run()
 
 		const snapshot = pipeline.snapshot()
-		const addi = snapshot.rows.find((row) => row.op === 'ADDI' && row.stalls > 0)
+		const addi = snapshot.rows.find((row) => row.op === 'addi' && row.stalls > 0)
 		expect(addi).toBeDefined()
 		const stats = snapshot.byAddress.get(addi!.address)
 		expect(stats?.stalls).toBeGreaterThan(0)
 
-		const branch = snapshot.rows.find((row) => row.op === 'BNE')
+		const branch = snapshot.rows.find((row) => row.op === 'bne')
 		const branchStats = snapshot.byAddress.get(branch!.address)
 		expect(branchStats?.branches).toBe(2)
 		// With no predictor the front end falls through, so a taken branch is a miss.

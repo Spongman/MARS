@@ -1,15 +1,27 @@
 import { Assembler } from '../core/assembler'
 import { bitsToDouble, bitsToSingle, formatDouble, formatSingle } from '../core/coprocessor'
-import { formatWord, memoryKey, parseWord } from '../core/format'
+import { formatWord, parseWord } from '../core/format'
 import { REGISTER_NAMES } from '../core/registers'
 import type { MemoryView, Registers } from '../core/types'
 
-interface DebugDataTipState {
+export interface DebugDataTipState {
 	registers: Registers
 	memory: MemoryView
 	fpRegisters: number[]
 	/** Labels of the assembled program, which reach across files. */
 	labels: Map<string, number>
+}
+
+/** One token of a line, and what it is worth. */
+export interface TokenDescription {
+	start: number
+	length: number
+	/** Markdown, one paragraph per entry, in the order they are shown. */
+	contents: string[]
+	/** The register this token names, for panels that light one. */
+	register?: string
+	/** The address this token resolves to, for panels that light one. */
+	address?: number
 }
 
 interface MonacoLike {
@@ -51,7 +63,7 @@ function getRegisterValue(register: string, registers: Registers) {
 }
 
 /** Hover contents for `$f0`-`$f31`, including the double a pair holds. */
-function getFpRegisterContents(index: number, fpRegisters: number[]) {
+function getFpRegisterContents(index: number, fpRegisters: number[]): string[] {
 	const bits = fpRegisters[index] ?? 0
 	const contents = [
 		`**$f${index}**`,
@@ -61,11 +73,91 @@ function getFpRegisterContents(index: number, fpRegisters: number[]) {
 	if (index % 2 === 0) {
 		contents.push(`double \`${formatDouble(bitsToDouble(bits, fpRegisters[index + 1] ?? 0))}\``)
 	}
-	return contents.map((value) => ({ value }))
+	return contents
 }
 
 function getTokenRange(monaco: MonacoLike, position: MonacoPosition, start: number, length: number) {
 	return new monaco.Range(position.lineNumber, start + 1, position.lineNumber, start + length + 1)
+}
+
+/**
+ * What the token at `offset` of `line` is worth right now, and where in the
+ * line it sits.
+ *
+ * This is the whole of the data tip, kept apart from Monaco because the same
+ * question is asked of text Monaco knows nothing about: the disassembly the
+ * gutter draws beside a source line is not in any model, and a register there
+ * has to report the same value it reports in the source.
+ */
+export function describeToken(
+	line: string,
+	offset: number,
+	state: DebugDataTipState,
+	labelOf: (name: string) => number | undefined = (name) => state.labels.get(name),
+): TokenDescription | null {
+	const memoryMatch = /(-?(?:0x[0-9a-f]+|\d+)|[A-Za-z_]\w*)?\s*\(\s*(\$(?:[A-Za-z]\w*|\d+))\s*\)/ig
+	for (const match of line.matchAll(memoryMatch)) {
+		const start = match.index ?? 0
+		if (offset < start || offset > start + match[0].length) continue
+		const offsetText = match[1]
+		const base = getRegisterValue(match[2], state.registers)
+		const displacement = offsetText ? (parseWord(offsetText) ?? labelOf(offsetText) ?? 0) : 0
+		const address = (base.value + displacement) >>> 0
+		const value = state.memory.words.get(address >>> 2) ?? 0
+		return {
+			start,
+			length: match[0].length,
+			register: base.name,
+			address,
+			contents: [
+				'**Effective address**',
+				`\`${formatWord(address)}\` = \`${formatValue(value)}\``,
+				`base \`${base.name}\` ${formatValue(base.value)} + offset ${formatValue(displacement)}`,
+			],
+		}
+	}
+
+	const registerMatch = /\$(?:[A-Za-z]\w*|\d+)/g
+	for (const match of line.matchAll(registerMatch)) {
+		const start = match.index ?? 0
+		if (offset < start || offset > start + match[0].length) continue
+		const fpRegister = /^\$f(\d{1,2})$/i.exec(match[0])
+		if (fpRegister && Number(fpRegister[1]) < 32) {
+			return {
+				start,
+				length: match[0].length,
+				register: `$f${Number(fpRegister[1])}`,
+				contents: getFpRegisterContents(Number(fpRegister[1]), state.fpRegisters),
+			}
+		}
+		const register = getRegisterValue(match[0], state.registers)
+		return {
+			start,
+			length: match[0].length,
+			register: register.name,
+			contents: [`**${register.name}**\n\n\`${formatValue(register.value)}\``],
+		}
+	}
+
+	const tokenMatch = /-?(?:0x[0-9a-f]+|\d+)|[A-Za-z_]\w*/ig
+	for (const match of line.matchAll(tokenMatch)) {
+		const start = match.index ?? 0
+		if (offset < start || offset > start + match[0].length) continue
+		const number = parseWord(match[0])
+		if (number !== null) {
+			return { start, length: match[0].length, contents: [`**Immediate**\n\n\`${formatValue(number)}\``] }
+		}
+		const labelAddress = labelOf(match[0])
+		if (labelAddress !== undefined) {
+			return {
+				start,
+				length: match[0].length,
+				address: labelAddress,
+				contents: [`**Label ${match[0]}**\n\n\`${formatWord(labelAddress)}\``],
+			}
+		}
+	}
+	return null
 }
 
 /** Installs live MIPS register, label, literal, and address hover data tips. */
@@ -87,71 +179,21 @@ export function registerMipsDebugDataTips(monaco: MonacoLike, getState: () => De
 	return monaco.languages.registerHoverProvider('mips', {
 		provideHover(model, position) {
 			const state = getState()
-			const line = model.getLineContent(position.lineNumber)
-			const offset = position.column - 1
 			// The hovered file is assembled on its own, so a label it defines
 			// resolves as it is typed; the program's own labels cover the rest,
 			// which is where a label defined in another file comes from.
 			const own = getLabels(model.getValue())
-			const labels = { get: (name: string) => own.get(name) ?? state.labels.get(name) }
-
-			const memoryMatch = /(-?(?:0x[0-9a-f]+|\d+)|[A-Za-z_]\w*)?\s*\(\s*(\$(?:[A-Za-z]\w*|\d+))\s*\)/ig
-			for (const match of line.matchAll(memoryMatch)) {
-				const start = match.index ?? 0
-				if (offset < start || offset > start + match[0].length) continue
-				const offsetText = match[1]
-				const base = getRegisterValue(match[2], state.registers)
-				const displacement = offsetText ? (parseWord(offsetText) ?? labels.get(offsetText) ?? 0) : 0
-				const address = (base.value + displacement) >>> 0
-				const value = state.memory[memoryKey(address)] ?? 0
-				return {
-					range: getTokenRange(monaco, position, start, match[0].length),
-					contents: [
-						{ value: '**Effective address**' },
-						{ value: `\`${memoryKey(address)}\` = \`${formatValue(value)}\`` },
-						{ value: `base \`${base.name}\` ${formatValue(base.value)} + offset ${formatValue(displacement)}` },
-					],
-				}
+			const described = describeToken(
+				model.getLineContent(position.lineNumber),
+				position.column - 1,
+				state,
+				(name) => own.get(name) ?? state.labels.get(name),
+			)
+			if (!described) return null
+			return {
+				range: getTokenRange(monaco, position, described.start, described.length),
+				contents: described.contents.map((value) => ({ value })),
 			}
-
-			const registerMatch = /\$(?:[A-Za-z]\w*|\d+)/g
-			for (const match of line.matchAll(registerMatch)) {
-				const start = match.index ?? 0
-				if (offset < start || offset > start + match[0].length) continue
-				const fpRegister = /^\$f(\d{1,2})$/i.exec(match[0])
-				if (fpRegister && Number(fpRegister[1]) < 32) {
-					return {
-						range: getTokenRange(monaco, position, start, match[0].length),
-						contents: getFpRegisterContents(Number(fpRegister[1]), state.fpRegisters),
-					}
-				}
-				const register = getRegisterValue(match[0], state.registers)
-				return {
-					range: getTokenRange(monaco, position, start, match[0].length),
-					contents: [{ value: `**${register.name}**\n\n\`${formatValue(register.value)}\`` }],
-				}
-			}
-
-			const tokenMatch = /-?(?:0x[0-9a-f]+|\d+)|[A-Za-z_]\w*/ig
-			for (const match of line.matchAll(tokenMatch)) {
-				const start = match.index ?? 0
-				if (offset < start || offset > start + match[0].length) continue
-				const number = parseWord(match[0])
-				if (number !== null) {
-					return {
-						range: getTokenRange(monaco, position, start, match[0].length),
-						contents: [{ value: `**Immediate**\n\n\`${formatValue(number)}\`` }],
-					}
-				}
-				const labelAddress = labels.get(match[0])
-				if (labelAddress !== undefined) {
-					return {
-						range: getTokenRange(monaco, position, start, match[0].length),
-						contents: [{ value: `**Label ${match[0]}**\n\n\`${memoryKey(labelAddress)}\`` }],
-					}
-				}
-			}
-			return null
 		},
 	})
 }

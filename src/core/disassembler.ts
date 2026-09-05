@@ -1,5 +1,6 @@
 import { bitsToDouble, bitsToSingle, formatDouble, formatSingle } from './coprocessor'
 import { decode, type Decoded, type DecodedOperand } from './decoder'
+import { OP_NAMES } from './ops'
 import { formatHex, formatWord } from './format'
 import { REGISTER_NAMES } from './registers'
 import type { CodeWord } from './types'
@@ -59,7 +60,7 @@ export function disassemble(word: number, address?: number): string | null {
 	if (!decoded) return null
 
 	const text = operands(decoded, address)
-	const mnemonic = decoded.op.toLowerCase()
+	const mnemonic = OP_NAMES[decoded.op]
 	return text ? `${mnemonic} ${text}` : mnemonic
 }
 

@@ -4,12 +4,14 @@ import type { MemoryView as Memory } from '../core/types'
 import { formatHex, formatWord, parseWord } from '../core/format'
 import { disassemble } from '../core/disassembler'
 import { nextToggles } from './toggleGroup'
-import HexNumber, { dimmedDigits } from './HexNumber'
+import HexNumber, { HexWord, dimmedDigits } from './HexNumber'
 import EditableCell from './EditableCell'
 import { parseEditedValue } from './editValue'
+import { flashClass, useChangedEntries, useFlash } from './highlight'
 import { MEMORY_CONFIGURATIONS, type HexDimming, type MemoryConfigurationValues } from '../core/settings'
 import { useTHRAXStore } from '../store/thraxStore'
 import { isFlagSet, isOneOf, useStoredState } from '../hooks/useStoredState'
+import { rowTop, rowWindow, useFixedRowScroller } from './rowWindow'
 
 interface MemoryViewProps {
 	memory: Memory
@@ -19,6 +21,8 @@ interface MemoryViewProps {
 	returnAddresses: Set<number>
 	/** Address to scroll to when it changes, from a selected call stack frame. */
 	focusAddress: number | null
+	/** The address under the pointer anywhere in the workspace, lit here too. */
+	hoveredAddress?: number | null
 	/**
 	 * Bumped each time a panel asks for an address, so asking for the one
 	 * already shown brings it back into view rather than doing nothing.
@@ -69,7 +73,7 @@ const sectionForAddress = (sections: MemorySection[], address: number) =>
 
 /** Little-endian byte read against the word-indexed memory view. */
 const byteAt = (memory: Memory, address: number) => {
-	const word = memory[formatAddress((address & ~3) >>> 0)] ?? 0
+	const word = memory.words.get(address >>> 2) ?? 0
 	return (word >>> ((address & 3) * 8)) & 0xff
 }
 
@@ -148,7 +152,7 @@ interface MemoryByte { address: number, value: number }
 interface MemoryGroup { start: number, bytes: MemoryByte[], zero: boolean, leadingZeros: number, value: number | null }
 interface MemoryRowData { address: number, groups: MemoryGroup[], bytes: MemoryByte[] }
 
-const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSize, showAscii, showIcons, hexDimming, hover, pc, returnAddresses, editable, onEditWord }: {
+const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSize, showAscii, showIcons, hexDimming, hover, pc, returnAddresses, editable, onEditWord, pointed, flashed, changed }: {
 	row: MemoryRowData
 	top: number
 	left: number
@@ -162,12 +166,20 @@ const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSi
 	returnAddresses: Set<number>
 	editable: boolean
 	onEditWord?: (address: number, value: number) => boolean
+	/** The address under the pointer, wherever in the workspace it is being pointed at. */
+	pointed: number | null
+	/** The word a navigation landed on, lit until it fades. */
+	flashed: number | null
+	/** Words the last step moved, lit in the other colour. */
+	changed: ReadonlySet<string>
 }) {
 	const isHovered = (address: number) => hover !== null && address >= hover.start && address < hover.start + hover.size
 
 	return (
 		<div className="memory-row" style={{ top, left, width }}>
-			<span className="memory-row-address"><HexNumber text={formatAddress(row.address)} /></span>
+			<span className={`memory-row-address${pointed !== null && pointed >= row.address && pointed < row.address + row.bytes.length ? ' address-hovered' : ''}`}>
+				<HexNumber text={formatAddress(row.address)} />
+			</span>
 			<span className="memory-row-groups">
 				{row.groups.map((group, groupIndex) => {
 					const digits = group.bytes.length * 2
@@ -181,6 +193,8 @@ const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSi
 						text={groupText}
 						title={`${formatAddress(group.start)}`}
 						editable={writable}
+						address={group.start}
+						size={groupSize}
 						onCommit={(typed) => {
 							const value = parseEditedValue(typed, '0x')
 							return value !== null && (onEditWord?.(group.start, value) ?? false)
@@ -191,6 +205,13 @@ const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSi
 							group.start === pc ? 'current-instruction' : '',
 							returnAddresses.has(group.start) ? 'return-address' : '',
 							group.value !== null && returnAddresses.has(group.value) ? 'return-slot' : '',
+							// The address itself, or a word holding it: both are places
+							// the hovered address appears, so both light.
+							group.start === pointed || (group.value !== null && group.value === pointed) ? 'address-hovered' : '',
+							// Navigation wins where both apply: the click is the more
+							// recent thing, and one colour on a cell reads better than two.
+							group.start === flashed ? flashClass('navigation')
+								: changed.has(formatWord(group.start)) ? flashClass('change') : '',
 						].filter(Boolean).join(' ')}
 					>
 						{/* Little-endian: the highest address is the most significant digit pair. */}
@@ -230,7 +251,7 @@ const MemoryRow = React.memo(function MemoryRow({ row, top, left, width, groupSi
 	)
 })
 
-function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 0, editable = false, onEditWord, onHoverAddress }: MemoryViewProps) {
+function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 0, editable = false, onEditWord, onHoverAddress, hoveredAddress = null }: MemoryViewProps) {
 	const memoryConfiguration = useTHRAXStore((state) => state.settings.memoryConfiguration)
 	const sections = React.useMemo(() => sectionsFor(MEMORY_CONFIGURATIONS[memoryConfiguration]), [memoryConfiguration])
 	const textSection = sections[0]
@@ -243,15 +264,11 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 	const [addressError, setAddressError] = React.useState<string | null>(null)
 	const [windowStart, setWindowStart] = React.useState(textSection.start)
 	const [pendingReveal, setPendingReveal] = React.useState<number | null>(null)
-	const [scrollTop, setScrollTop] = React.useState(0)
-	const [viewport, setViewport] = React.useState({ width: 0, height: 0 })
+	// The ASCII column changes the frame without resizing the grid.
+	const { ref: scrollRef, originRef, viewport, scrollTop, frame, onScroll } = useFixedRowScroller(ROW_HEIGHT, [showAscii])
 	const [charWidth, setCharWidth] = React.useState(7.2)
 	const [hover, setHover] = React.useState<HoverRange | null>(null)
-	const [frame, setFrame] = React.useState({ top: 0, left: 0, width: 0 })
-	const [layoutTick, setLayoutTick] = React.useState(0)
-	const scrollRef = React.useRef<HTMLDivElement>(null)
 	const focusedRef = React.useRef<string | null>(null)
-	const originRef = React.useRef<HTMLSpanElement>(null)
 	const probeRef = React.useRef<HTMLSpanElement>(null)
 
 	const section = sections.find((entry) => entry.id === sectionId) ?? sections[0]
@@ -259,61 +276,6 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 	React.useLayoutEffect(() => {
 		const width = probeRef.current?.getBoundingClientRect().width
 		if (width) setCharWidth(width / 20)
-	}, [])
-
-	React.useLayoutEffect(() => {
-		const element = scrollRef.current
-		if (!element) return
-		const observer = new ResizeObserver(() => setViewport({ width: element.clientWidth, height: element.clientHeight }))
-		observer.observe(element)
-		setViewport({ width: element.clientWidth, height: element.clientHeight })
-		return () => observer.disconnect()
-	}, [])
-
-	// Fixed rows are placed by hand, so measure where their containing block actually
-	// starts: an ancestor with a transform, filter or clip-path takes that role from the
-	// viewport, and the probe below reports whichever one wins.
-	React.useLayoutEffect(() => {
-		const grid = scrollRef.current
-		const origin = originRef.current
-		if (!grid || !origin) return
-		const gridRect = grid.getBoundingClientRect()
-		const originRect = origin.getBoundingClientRect()
-		const next = {
-			top: gridRect.top + grid.clientTop - originRect.top,
-			left: gridRect.left + grid.clientLeft - originRect.left,
-			width: grid.clientWidth,
-		}
-		setFrame((current) => (current.top === next.top && current.left === next.left && current.width === next.width ? current : next))
-	}, [layoutTick, showAscii, viewport, scrollTop])
-
-	// Fixed rows sit outside the grid's scroll chain, so the wheel never reaches it.
-	React.useEffect(() => {
-		const grid = scrollRef.current
-		if (!grid) return
-		const onWheel = (event: WheelEvent) => {
-			const factor = event.deltaMode === 1 ? ROW_HEIGHT : event.deltaMode === 2 ? grid.clientHeight : 1
-			grid.scrollTop += event.deltaY * factor
-			grid.scrollLeft += event.deltaX * factor
-			event.preventDefault()
-		}
-		grid.addEventListener('wheel', onWheel, { passive: false })
-		return () => grid.removeEventListener('wheel', onWheel)
-	}, [])
-
-	// A move of an ancestor does not resize the grid, so re-measure on those too.
-	React.useEffect(() => {
-		const remeasure = (event?: Event) => {
-			// The grid's own scrolling already re-measures through the effect above.
-			if (event?.target === scrollRef.current) return
-			setLayoutTick((tick) => tick + 1)
-		}
-		window.addEventListener('resize', remeasure)
-		window.addEventListener('scroll', remeasure, true)
-		return () => {
-			window.removeEventListener('resize', remeasure)
-			window.removeEventListener('scroll', remeasure, true)
-		}
 	}, [])
 
 	// As many groups as fit the row, counting the ASCII column. Rounding the row
@@ -333,8 +295,7 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 
 	// Fixed-size row pool: the slot count only changes on resize, so scrolling
 	// rewrites the contents of the same row elements instead of remounting them.
-	const visibleRows = Math.min(totalRows, Math.ceil(viewport.height / ROW_HEIGHT) + OVERSCAN_ROWS * 2)
-	const firstRow = Math.max(0, Math.min(Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN_ROWS, totalRows - visibleRows))
+	const { first: firstRow, count: visibleRows } = rowWindow(scrollTop, viewport.height, ROW_HEIGHT, totalRows, OVERSCAN_ROWS)
 
 	// Anchors the window at the section start whenever the address is near it, so
 	// the rows above stay reachable, and only re-anchors for a distant address.
@@ -372,7 +333,7 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 		setPendingReveal(null)
 	}, [alignedWindowStart, bytesPerRow, pendingReveal, totalRows, viewport.height])
 
-	const rows = React.useMemo<MemoryRowData[]>(() => Array.from({ length: Math.max(0, visibleRows) }, (unused, index) => {
+	const rows = React.useMemo<MemoryRowData[]>(() => Array.from({ length: visibleRows }, (unused, index) => {
 		const rowAddress = (alignedWindowStart + (firstRow + index) * bytesPerRow) >>> 0
 		const bytes = Array.from({ length: bytesPerRow }, (unusedByte, offset) => {
 			const address = (rowAddress + offset) >>> 0
@@ -395,6 +356,17 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 		return { address: rowAddress, groups, bytes }
 	}), [alignedWindowStart, bytesPerRow, firstRow, groupSize, memory, visibleRows])
 
+	// Only the rows on screen are diffed: a word nobody is looking at cannot
+	// flash, and the whole of memory is far more than a panel ever shows.
+	const visibleWords = React.useMemo(() => rows.flatMap((row) =>
+		row.groups.flatMap((group) => group.value === null ? [] : [[formatWord(group.start), group.value] as const])),
+	[rows])
+	const changed = useChangedEntries(visibleWords)
+
+	const navigating = useFlash('navigation', focusAddress === null ? null : focusRequest)
+	// The word a navigation asked for, aligned to the group it lands in.
+	const flashed = navigating && focusAddress !== null ? focusAddress - (focusAddress % groupSize) : null
+
 	const handleHover = (event: React.MouseEvent<HTMLDivElement>) => {
 		const target = (event.target as HTMLElement).closest<HTMLElement>('[data-address]')
 		if (!target) {
@@ -406,7 +378,9 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 		if (hover && hover.start === start && hover.size === size) return
 		const rect = target.getBoundingClientRect()
 		setHover({ start, size, rect: { left: rect.left, top: rect.top, bottom: rect.bottom } })
-		onHoverAddress(size === 4 && start >= textSection.start && start <= textSection.end ? start : null)
+		// Any segment: a register holding a data address is as worth lighting as a
+		// source line, and the panels that cannot place an address simply ignore it.
+		onHoverAddress(size === 4 ? start : null)
 	}
 
 	const clearHover = () => {
@@ -469,7 +443,7 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 					</button>
 				))}
 				<span className="memory-status">
-					{formatAddress(alignedWindowStart)} - {formatAddress(windowEnd)}
+					<HexWord value={alignedWindowStart} /> - <HexWord value={windowEnd} />
 					{windowEnd < section.end && ' (windowed; use Go to move)'}
 				</span>
 			</div>
@@ -523,7 +497,7 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 			</div>
 			{addressError && <div className="memory-error">{addressError}</div>}
 
-			<div className="memory-grid" ref={scrollRef} onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); clearHover() }}>
+			<div className="memory-grid" ref={scrollRef} onScroll={(event) => { onScroll(event); clearHover() }}>
 				<div className="memory-scroll" style={{ height: totalRows * ROW_HEIGHT }}>
 					<div
 						className="memory-rows"
@@ -535,7 +509,7 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 							<MemoryRow
 								key={slot}
 								row={row}
-								top={frame.top + (firstRow + slot) * ROW_HEIGHT - scrollTop}
+								top={rowTop(frame, firstRow + slot, ROW_HEIGHT, scrollTop)}
 								left={frame.left}
 								width={frame.width}
 								groupSize={groupSize}
@@ -547,6 +521,9 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 								pc={groupSize === 4 ? pc : null}
 								returnAddresses={returnAddresses}
 								hover={hover && hover.start >= row.address && hover.start < row.address + bytesPerRow ? hover : null}
+								pointed={hoveredAddress}
+								flashed={flashed !== null && flashed >= row.address && flashed < row.address + bytesPerRow ? flashed : null}
+								changed={changed}
 							/>
 						))}
 					</div>

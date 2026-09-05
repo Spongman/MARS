@@ -19,7 +19,10 @@
  */
 
 import { REGISTER_FILE_NAMES } from './registers'
+import { KIND_REGISTER, KIND_FP, KIND_FLAG, KIND_CP0, KIND_MEMORY, KIND_CONSOLE, KIND_CONSOLE_RESET, KIND_DISPLAY, KIND_QUEUED_INPUT, KIND_CALL, KIND_HI_LO, KIND_HEAP_POINTER, KIND_HALTED, KIND_EXIT_CODE, KIND_SLEEP, KIND_INPUT } from './effectKind'
 import type { CallFrame, DelayState, Effect } from './types'
+
+
 
 /**
  * Entries per block, and effects per block: the whole history rolls at one
@@ -29,19 +32,19 @@ import type { CallFrame, DelayState, Effect } from './types'
  */
 export const BLOCK_SIZE = 2048
 
-/**
- * Effect kinds, as the codes the `kind` column holds.  The names are the
- * `Effect` union's, so a materialized effect reads the same either way.
- */
-export const EFFECT_KINDS = [
-	'register', 'fp', 'flag', 'cp0', 'memory', 'console', 'consoleReset',
-	'display', 'queuedInput', 'call', 'hiLo', 'heapPointer', 'halted',
-	'exitCode', 'sleep', 'input',
-] as const
 
-export type EffectKind = (typeof EFFECT_KINDS)[number]
 
-const CODES = new Map<EffectKind, number>(EFFECT_KINDS.map((kind, code) => [kind, code]))
+/** Every column of one effect, as `slotAt` reads them out together. */
+export interface EffectSlot {
+	/** The kind, as its code; `EFFECT_KINDS` spells it. */
+	kind: number
+	/** Which location: a register number, an index, or a word address. */
+	a: number
+	/** The value held, for the kinds whose value is a number. */
+	b: number
+	/** What is held when it is not a number; undefined for the rest. */
+	value: unknown
+}
 
 /** One block of columns, plus the values of the few effects that need one. */
 interface Block {
@@ -96,11 +99,11 @@ export class EffectStore {
 		return { start, count }
 	}
 
-	push(kind: EffectKind, a: number, b: number, value?: unknown) {
+	push(kind: number, a: number, b: number, value?: unknown) {
 		if (this.nextSlot >= BLOCK_SIZE) this.carryRunToNextBlock()
 		const target = this.blockAt(this.currentBlock, true)!
 		const slot = this.nextSlot++
-		target.kind[slot] = CODES.get(kind)!
+		target.kind[slot] = kind
 		target.a[slot] = a
 		target.b[slot] = b
 		if (value !== undefined) target.values.set(slot, value)
@@ -139,16 +142,31 @@ export class EffectStore {
 		this.runStart = -1
 	}
 
-	kindAt(index: number): EffectKind {
-		return EFFECT_KINDS[this.blockOf(index).kind[index % BLOCK_SIZE]]
+	/** The kind, as the code the column holds. */
+	kindAt(index: number): number {
+		return this.blockOf(index).kind[index % BLOCK_SIZE]
+	}
+
+	/**
+	 * Every column of one effect, through a single block lookup.
+	 *
+	 * Reading them one at a time locates the block four times over, each with a
+	 * divide, a bounds check and a modulo, to fetch four numbers that sit beside
+	 * each other.  Anything that wants more than one column asks for all of them.
+	 */
+	slotAt(index: number): EffectSlot {
+		const block = this.blockOf(index)
+		const slot = index % BLOCK_SIZE
+		return {
+			kind: block.kind[slot],
+			a: block.a[slot],
+			b: block.b[slot],
+			value: block.values.get(slot),
+		}
 	}
 
 	aAt(index: number): number {
 		return this.blockOf(index).a[index % BLOCK_SIZE]
-	}
-
-	bAt(index: number): number {
-		return this.blockOf(index).b[index % BLOCK_SIZE]
 	}
 
 	valueAt(index: number): unknown {
@@ -226,28 +244,30 @@ export class EffectStore {
 	 * are ever built, so this costs nothing for a log nobody is looking at.
 	 */
 	materialize(index: number): Effect {
-		const kind = this.kindAt(index)
-		const a = this.aAt(index)
-		const b = this.bAt(index)
-		switch (kind) {
-			case 'register': return { kind, name: REGISTER_FILE_NAMES[a], value: b }
-			case 'fp': return { kind, index: a, value: b }
-			case 'flag': return { kind, index: a, value: b !== 0 }
-			case 'cp0': return { kind, index: a, value: b }
-			case 'memory': return { kind, wordAddress: a, words: this.valueAt(index) as Array<number | undefined> }
-			case 'console': return { kind, text: String(this.valueAt(index)) }
-			case 'consoleReset': return { kind, value: String(this.valueAt(index)) }
-			case 'display': return { kind, value: String(this.valueAt(index)) }
-			case 'queuedInput': return { kind, value: String(this.valueAt(index)) }
-			case 'call': return { kind, frame: this.valueAt(index) as CallFrame }
-			case 'hiLo': return { kind, hi: a, lo: b }
-			case 'heapPointer': return { kind, value: b }
-			case 'halted': return { kind, value: b !== 0 }
+		const { kind: code, a, b, value } = this.slotAt(index)
+		switch (code) {
+			case KIND_REGISTER: return { kind: code, name: REGISTER_FILE_NAMES[a], value: b }
+			case KIND_MEMORY: return { kind: code, wordAddress: a, words: value as Array<number | undefined> }
+			case KIND_CONSOLE: return { kind: code, text: String(value) }
+			case KIND_CALL: return { kind: code, frame: value as CallFrame }
+			case KIND_HI_LO: return { kind: code, hi: a, lo: b }
 			// `a` says whether the program had exited; `null` is not a number.
-			case 'exitCode': return { kind, value: a === 0 ? null : b }
-			case 'sleep': return { kind, value: b }
-			case 'input': return { kind, value: String(this.valueAt(index)) }
+			case KIND_EXIT_CODE: return { kind: code, value: a === 0 ? null : b }
+			case KIND_FLAG: return { kind: code, index: a, value: b !== 0 }
+			case KIND_HALTED: return { kind: code, value: b !== 0 }
+			case KIND_FP:
+			case KIND_CP0:
+				return { kind: code, index: a, value: b }
+			case KIND_HEAP_POINTER:
+			case KIND_SLEEP:
+				return { kind: code, value: b }
+			case KIND_CONSOLE_RESET:
+			case KIND_DISPLAY:
+			case KIND_QUEUED_INPUT:
+			case KIND_INPUT:
+				return { kind: code, value: String(value) }
 		}
+		throw new Error(`Effect ${index} has an unknown kind: ${code}`)
 	}
 }
 

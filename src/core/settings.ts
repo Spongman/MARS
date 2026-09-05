@@ -35,6 +35,21 @@ export interface MemoryConfigurationValues {
 	memoryMapLimitAddress: number
 }
 
+/**
+ * Whether `value` is an address the configuration maps, rather than a number
+ * that happens to be in a register.
+ *
+ * Most registers hold a small integer or nothing at all, so treating every
+ * register's contents as an address makes the whole file light the moment one
+ * of them is pointed at: zero is in thirty of them at once.  Only a value
+ * inside user space or the kernel is worth calling an address.
+ */
+export function isMappedAddress(value: number, layout: MemoryConfigurationValues): boolean {
+	const address = value >>> 0
+	return (address >= (layout.textBaseAddress >>> 0) && address <= (layout.userHighAddress >>> 0))
+		|| (address >= (layout.kernelBaseAddress >>> 0) && address <= (layout.kernelHighAddress >>> 0))
+}
+
 /** SPIM-derived layout, used by default. */
 const DEFAULT_CONFIGURATION: MemoryConfigurationValues = {
 	textBaseAddress: 0x00400000,
@@ -157,6 +172,28 @@ export interface ThraxSettings {
 	/** How much of a hex number's leading zero run is dimmed. */
 	hexDimming: HexDimming
 	/**
+	 * A panel flashes where a click sent the eye: the register, word or source
+	 * line just navigated to.  Two panels are involved in one navigation and the
+	 * destination is rarely where the pointer is, so without it the answer has to
+	 * be searched for.
+	 */
+	highlightNavigation: boolean
+	/**
+	 * A value flashes where it is shown when the last step changed it.  Separate
+	 * from the navigation flash, and a different colour, because the two answer
+	 * different questions: where did I just go, and what just moved.
+	 */
+	highlightChanges: boolean
+	/**
+	 * How long a highlight takes to fade.  Long enough to be followed rather than
+	 * caught: the eye is usually elsewhere when the flash starts, since the click
+	 * that caused it was in another panel.
+	 */
+	highlightSeconds: number
+	/** The two highlight colours, as `#rrggbb`; the fade supplies the alpha. */
+	highlightNavigationColor: string
+	highlightChangeColor: string
+	/**
 	 * Enables the program-argument text field (`ProgramArguments`, a boolean).
 	 * The argument string itself is separate and is not a persisted setting.
 	 */
@@ -195,13 +232,28 @@ export const DEFAULT_SETTINGS: ThraxSettings = {
 	displayValuesInHex: true,
 	displayAddressesInHex: true,
 	hexDimming: 'nibbles',
+	highlightNavigation: true,
+	highlightChanges: true,
+	highlightSeconds: 2.5,
+	highlightNavigationColor: '#4094ff',
+	highlightChangeColor: '#f0a830',
 	programArguments: false,
 	programArgumentsText: '',
 	memoryConfiguration: 'default',
 	backstepLimit: DEFAULT_BACKSTEP_LIMIT,
 }
 
+/**
+ * A fade shorter than this is a blink rather than something to follow, and one
+ * longer outlives the step that caused it.
+ */
+export const MIN_HIGHLIGHT_SECONDS = 0.2
+export const MAX_HIGHLIGHT_SECONDS = 10
+
 const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean'
+/** `#rrggbb`, which is what a colour input produces and what the fade parses. */
+const isHexColor = (value: unknown): value is string =>
+	typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)
 const isString = (value: unknown): value is string => typeof value === 'string'
 const isPositiveInteger = (value: unknown): value is number =>
 	typeof value === 'number' && Number.isInteger(value) && value > 0
@@ -223,6 +275,12 @@ export const SETTINGS_VALIDATORS: { [Key in keyof ThraxSettings]: (value: unknow
 	displayValuesInHex: isBoolean,
 	displayAddressesInHex: isBoolean,
 	hexDimming: (value) => typeof value === 'string' && (HEX_DIMMING_MODES as readonly string[]).includes(value),
+	highlightNavigation: isBoolean,
+	highlightChanges: isBoolean,
+	highlightSeconds: (value): value is number =>
+		typeof value === 'number' && Number.isFinite(value) && value >= MIN_HIGHLIGHT_SECONDS && value <= MAX_HIGHLIGHT_SECONDS,
+	highlightNavigationColor: isHexColor,
+	highlightChangeColor: isHexColor,
 	programArguments: isBoolean,
 	programArgumentsText: isString,
 	memoryConfiguration: isMemoryConfigurationName,

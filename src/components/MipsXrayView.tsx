@@ -1,6 +1,6 @@
 import React from 'react'
 import { disassemble } from '../core/disassembler'
-import { formatWord, memoryKey } from '../core/format'
+import { formatWord } from '../core/format'
 import type { MemoryView } from '../core/types'
 import { DatapathAnimation, staticWires, xrayLabels } from '../tools/xray/animation'
 import { arrowCorners, DOT_RADIUS, ROW_PIN, TRACK_WIDTH } from '../tools/xray/drawing'
@@ -139,7 +139,7 @@ function MipsXrayView({ memory, pc }: Props) {
 	const [speed, setSpeed] = useStoredState('xray.speed', 4, isOneOf(SPEEDS))
 	const [, setFrame] = React.useState(0)
 
-	const word = memory[memoryKey(pc)] ?? 0
+	const word = memory.words.get(pc >>> 2) ?? 0
 	const datapath = XRAY_DATAPATHS[diagram]
 	const drawing = XRAY_DRAWINGS[diagram]
 	const wires = React.useMemo(() => staticWires(diagram), [diagram])

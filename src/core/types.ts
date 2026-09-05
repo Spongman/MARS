@@ -1,3 +1,5 @@
+import type { Kind } from './effectKind'
+
 import type { SourceIndex } from './sourceIndex'
 
 export type TokenType =
@@ -141,7 +143,18 @@ export interface CoprocessorState {
 	cp0Registers: number[]
 }
 
-export type MemoryView = Record<string, number>
+/**
+ * The machine's memory, as panels read it: words by word address.
+ *
+ * The map is the simulator's own, handed over rather than copied.  There is one
+ * memory and it is written in place, so a copy bought nothing except a fresh
+ * identity for React to compare, and it bought that at the price of rebuilding
+ * every written word on every publish.  The wrapper is that identity, and costs
+ * one object.
+ */
+export interface MemoryView {
+	readonly words: ReadonlyMap<number, number>
+}
 
 /** State exposed by the THRAX Keyboard and Display MMIO tool. */
 export interface KeyboardDisplayState {
@@ -196,32 +209,32 @@ export type DelayState = 'none' | 'registered' | 'triggered'
  * directions and neither value is ever stored twice.
  */
 export type Effect =
-	| { kind: 'register', name: string, value: number }
-	| { kind: 'fp', index: number, value: number }
-	| { kind: 'flag', index: number, value: boolean }
-	| { kind: 'cp0', index: number, value: number }
+	| { kind: typeof Kind.REGISTER, name: string, value: number }
+	| { kind: typeof Kind.FP, index: number, value: number }
+	| { kind: typeof Kind.FLAG, index: number, value: boolean }
+	| { kind: typeof Kind.CP0, index: number, value: number }
 	/** A run of words from `wordAddress` up, `undefined` where a word did not exist. */
-	| { kind: 'memory', wordAddress: number, words: Array<number | undefined> }
+	| { kind: typeof Kind.MEMORY, wordAddress: number, words: Array<number | undefined> }
 	/** Text appended to the console: dropped going back, appended going forward. */
-	| { kind: 'console', text: string }
+	| { kind: typeof Kind.CONSOLE, text: string }
 	/** Syscall 60 empties the console, so the whole of it has to be kept. */
-	| { kind: 'consoleReset', value: string }
-	| { kind: 'display', value: string }
+	| { kind: typeof Kind.CONSOLE_RESET, value: string }
+	| { kind: typeof Kind.DISPLAY, value: string }
 	/** A read of the receiver register took a character out of the queue. */
-	| { kind: 'queuedInput', value: string }
+	| { kind: typeof Kind.QUEUED_INPUT, value: string }
 	/** A call frame: taken off going one way, put back going the other. */
-	| { kind: 'call', frame: CallFrame }
-	| { kind: 'hiLo', hi: number, lo: number }
-	| { kind: 'heapPointer', value: number }
-	| { kind: 'halted', value: boolean }
-	| { kind: 'exitCode', value: number | null }
-	| { kind: 'sleep', value: number }
+	| { kind: typeof Kind.CALL, frame: CallFrame }
+	| { kind: typeof Kind.HI_LO, hi: number, lo: number }
+	| { kind: typeof Kind.HEAP_POINTER, value: number }
+	| { kind: typeof Kind.HALTED, value: boolean }
+	| { kind: typeof Kind.EXIT_CODE, value: number | null }
+	| { kind: typeof Kind.SLEEP, value: number }
 	/**
 	 * What the user typed at a console or dialog read.  The registers and memory
 	 * it landed in are effects of their own, so this changes nothing on the way
 	 * back or forward; it is here so the history panel can show the answer.
 	 */
-	| { kind: 'input', value: string }
+	| { kind: typeof Kind.INPUT, value: string }
 
 /** One executed instruction, or one edit the user made, and what it did. */
 export interface HistoryEntry {

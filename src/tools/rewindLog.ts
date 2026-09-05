@@ -20,9 +20,15 @@
 /** A state the tool held, and the instruction count it held it before. */
 interface Checkpoint<T> { at: number, state: T }
 
-/** How a tool hands its state over and takes one back. */
+/**
+ * How a tool hands its state over and takes one back.
+ *
+ * `previous` is the record about to be exchanged, for a tool that keeps deltas
+ * rather than whole states: it names which slots to read, so the two sides of
+ * the swap cover the same ground.  A tool that copies everything ignores it.
+ */
 export interface RewindableState<T> {
-	capture(): T
+	capture(previous?: T): T
 	restore(state: T): void
 }
 
@@ -66,7 +72,7 @@ export class RewindLog<T> {
 	}
 
 	private exchange(checkpoint: Checkpoint<T>, state: RewindableState<T>) {
-		const held = state.capture()
+		const held = state.capture(checkpoint.state)
 		state.restore(checkpoint.state)
 		checkpoint.state = held
 	}

@@ -1,10 +1,11 @@
+import { Op } from '../ops'
 import { describe, expect, it } from 'vitest'
 import { decode } from '../decoder'
 import { build, run, withExit, words } from './helpers'
 
 /**
  * The simulator fetches and decodes words from memory, so anything that puts a
- * valid word at an executable address runs, no matter where it came from —
+ * valid word at an executable address runs, no matter where it came from:
  * once `selfModifyingCode` allows it, which is what gates both the text write
  * and the out-of-text fetch in MARS (`Memory.java:377-388`, `:939-944`).
  */
@@ -46,11 +47,11 @@ addi $t0, $t0, 1
 
 	it('drops the cached decoding when the word changes', () => {
 		const simulator = build(withExit('nop'))
-		expect(simulator.decodeAt(0x00400000)?.op).toBe('SLL')
+		expect(simulator.decodeAt(0x00400000)?.op).toBe(Op.SLL)
 		// Overwrite the nop with `addiu $t0, $zero, 7`.  A deliberate edit takes
 		// the raw path, as MARS's own text editing does (`Memory.java:891-910`).
 		simulator.writeMemoryRaw(0x00400000, words('addiu $t0, $zero, 7')[0], 4)
-		expect(simulator.decodeAt(0x00400000)?.op).toBe('ADDIU')
+		expect(simulator.decodeAt(0x00400000)?.op).toBe(Op.ADDIU)
 	})
 
 	it('halts rather than running through untouched memory', async () => {
@@ -74,8 +75,8 @@ describe('decoder', () => {
 	})
 
 	it('separates bgez from bltz on the rt field', () => {
-		expect(decode(words('here: bgez $t0, here')[0])?.op).toBe('BGEZ')
-		expect(decode(words('here: bltz $t0, here')[0])?.op).toBe('BLTZ')
+		expect(decode(words('here: bgez $t0, here')[0])?.op).toBe(Op.BGEZ)
+		expect(decode(words('here: bltz $t0, here')[0])?.op).toBe(Op.BLTZ)
 	})
 
 	it('reads jalr with an implied link register as writing $ra', () => {
@@ -89,9 +90,9 @@ describe('decoder', () => {
 	})
 
 	it('names floating-point operations with their format', () => {
-		expect(decode(words('add.d $f2, $f4, $f6')[0])?.op).toBe('ADD.D')
-		expect(decode(words('c.lt.s $f0, $f1')[0])?.op).toBe('C.LT.S')
-		expect(decode(words('cvt.w.s $f0, $f1')[0])?.op).toBe('CVT.W.S')
+		expect(decode(words('add.d $f2, $f4, $f6')[0])?.op).toBe(Op.ADD_D)
+		expect(decode(words('c.lt.s $f0, $f1')[0])?.op).toBe(Op.C_LT_S)
+		expect(decode(words('cvt.w.s $f0, $f1')[0])?.op).toBe(Op.CVT_W_S)
 	})
 
 	it('places CP1 operands in ft, fs, and fd', () => {

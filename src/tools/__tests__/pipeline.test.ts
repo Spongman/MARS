@@ -226,14 +226,14 @@ describe('branch prediction', () => {
 
 	it('marks the row a prediction missed', async () => {
 		const snapshot = await analyse('li $t0, 1\nbeq $t0, $t0, skip\nli $t1, 2\nskip:', { prediction: 'not-taken' })
-		const branch = snapshot.rows.find((row) => row.op === 'BEQ')!
+		const branch = snapshot.rows.find((row) => row.op === 'beq')!
 		expect(branch.predicted).toBe(false)
 		expect(branch.mispredicted).toBe(true)
 	})
 
 	it('delays the fetch of whatever follows the redirect', async () => {
 		const snapshot = await analyse('li $t0, 1\nbeq $t0, $t0, skip\nli $t1, 2\nskip:\nli $t2, 3')
-		const branchRow = snapshot.rows.findIndex((row) => row.op === 'BEQ')
+		const branchRow = snapshot.rows.findIndex((row) => row.op === 'beq')
 		// The instruction after the taken branch is fetched two cycles late.
 		expect(snapshot.rows[branchRow + 1].flushed).toBe(2)
 		expect(snapshot.rows[branchRow + 1].cycles[0] - snapshot.rows[branchRow].cycles[0]).toBe(3)

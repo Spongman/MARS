@@ -16,6 +16,7 @@
  */
 
 import type { Decoded } from '../core/decoder'
+import { Op, OP_NAMES } from '../core/ops'
 import type { ExecutionObserver, MachineConfig } from '../core/observer'
 import { RewindLog, type RewindableState } from './rewindLog'
 
@@ -116,9 +117,9 @@ export interface PipelineSnapshot {
 	byAddress: Map<number, PipelineAddressStats>
 }
 
-const LOADS = new Set(['LB', 'LBU', 'LH', 'LHU', 'LW'])
-const STORES = new Set(['SB', 'SH', 'SW'])
-const JUMPS = new Set(['J', 'JAL', 'JR', 'JALR'])
+const LOADS = new Set([Op.LB, Op.LBU, Op.LH, Op.LHU, Op.LW])
+const STORES = new Set([Op.SB, Op.SH, Op.SW])
+const JUMPS = new Set([Op.J, Op.JAL, Op.JR, Op.JALR])
 const RA = 31
 
 export interface RegisterEffects {
@@ -175,7 +176,7 @@ export function registerEffects(decoded: Decoded): RegisterEffects {
 		case 'rs,imm': return effects([rs])
 		case 'rs,rt,branch': return effects([rs, rt])
 		// bgezal/bltzal write $ra like jal, in addition to reading rs.
-		case 'rs,branch': return (op === 'BGEZAL' || op === 'BLTZAL') ? effects([rs], RA) : effects([rs])
+		case 'rs,branch': return (op === Op.BGEZAL || op === Op.BLTZAL) ? effects([rs], RA) : effects([rs])
 		case 'branch': return effects([])
 		// bc1t/bc1f with an explicit condition code: no GPR is read, only the FP flag,
 		// which this model does not track (see the module comment).
@@ -183,11 +184,11 @@ export function registerEffects(decoded: Decoded): RegisterEffects {
 		// movz.s/movn.s/movz.d/movn.d: the condition is a GPR (rt); the moved value and
 		// destination are both FP registers, which this model does not track.
 		case 'fd,fs,rt': return effects([rt])
-		case 'jump': return op === 'JAL' ? effects([], RA) : effects([])
-		case 'rt,cp0': return op === 'MFC0' ? effects([], rt) : effects([rt])
-		case 'rt,fs': return op === 'MFC1' ? effects([], rt) : effects([rt])
+		case 'jump': return op === Op.JAL ? effects([], RA) : effects([])
+		case 'rt,cp0': return op === Op.MFC0 ? effects([], rt) : effects([rt])
+		case 'rt,fs': return op === Op.MFC1 ? effects([], rt) : effects([rt])
 		// syscall reads its arguments; the CP1 operations use the other file.
-		case 'none': return op === 'SYSCALL' ? effects([2, 4, 5, 6, 7]) : effects([])
+		case 'none': return op === Op.SYSCALL ? effects([2, 4, 5, 6, 7]) : effects([])
 		default: return effects([])
 	}
 }
@@ -410,7 +411,7 @@ export class PipelineModel implements ExecutionObserver {
 		this.rows.push({
 			index: this.index,
 			address: address >>> 0,
-			op: decoded.op,
+			op: OP_NAMES[decoded.op],
 			cycles: [ifCycle, idCycle, exCycle, memCycle, wbCycle],
 			stalls,
 			cause,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { Kind } from '../effectKind'
 import { Assembler } from '../assembler'
 import { firstError } from '../diagnostics'
 import { MipsSimulator } from '../simulator'
@@ -105,7 +106,7 @@ describe('the log records only what an instruction touched', () => {
 
 		// `li $t0, 5` writes one register, and that is the whole entry: where
 		// execution stood lives on the entry rather than costing an effect.
-		expect(effectsOf(simulator)[0]).toEqual([{ kind: 'register', name: '$t0', value: 0 }])
+		expect(effectsOf(simulator)[0]).toEqual([{ kind: Kind.REGISTER, name: '$t0', value: 0 }])
 		for (const effects of effectsOf(simulator)) expect(effects.length).toBeLessThan(5)
 
 		// The entry carries the control state it will hand back on a step back.
@@ -127,7 +128,7 @@ main:	la $a0, buffer
 		expect(simulator.pendingInput).not.toBeNull()
 		simulator.provideInput('hello world')
 
-		const memory = effectsOf(simulator).flat().filter((effect) => effect.kind === 'memory')
+		const memory = effectsOf(simulator).flat().filter((effect) => effect.kind === Kind.MEMORY)
 		expect(memory).toHaveLength(1)
 		// Twelve bytes of buffer, so three words in one run; `.space` zeroed them.
 		expect(memory[0]).toMatchObject({ wordAddress: 0x10010000 >>> 2, words: [0, 0, 0] })
@@ -139,7 +140,7 @@ main:	la $a0, buffer
 		simulator.provideInput('42')
 
 		expect(simulator.registers.$v0).toBe(42)
-		expect(effectsOf(simulator).flat()).toContainEqual({ kind: 'input', value: '42' })
+		expect(effectsOf(simulator).flat()).toContainEqual({ kind: Kind.INPUT, value: '42' })
 	})
 
 	it('puts back a keyboard character a read consumed', () => {

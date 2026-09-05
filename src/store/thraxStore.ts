@@ -8,7 +8,7 @@ import { DEFAULT_SETTINGS, MEMORY_CONFIGURATIONS, SETTINGS_VALIDATORS, type Memo
 import { MipsSimulator } from '../core/simulator'
 import { EMPTY_SOURCE_INDEX, type SourceIndex, type SourceRow } from '../core/sourceIndex'
 import { EffectStore } from '../core/effectStore'
-import { HistoryLog } from '../core/historyLog'
+import { HistoryLog, moveToEntry } from '../core/historyLog'
 import type { CallFrame, CodeWord, CoprocessorState, Diagnostic, KeyboardDisplayState, MemoryView, PendingInput, Registers, SymbolTables } from '../core/types'
 import { DebugSession } from '../debug/session'
 import { isFlagSet, readStoredSetting, writeStoredSetting } from '../hooks/useStoredState'
@@ -77,6 +77,11 @@ const SETTING_KEYS: { [Key in keyof ThraxSettings]: string } = {
 	displayValuesInHex: 'display.valuesInHex',
 	displayAddressesInHex: 'display.addressesInHex',
 	hexDimming: 'display.hexDimming',
+	highlightNavigation: 'display.highlightNavigation',
+	highlightChanges: 'display.highlightChanges',
+	highlightSeconds: 'display.highlightSeconds',
+	highlightNavigationColor: 'display.highlightNavigationColor',
+	highlightChangeColor: 'display.highlightChangeColor',
 }
 
 /**
@@ -287,6 +292,12 @@ interface THRAXStore extends CoprocessorState {
 	runToken: number
 	/** How the console tab asks to be noticed while it is hidden. */
 	consoleAttention: 'none' | 'output' | 'input'
+	/**
+	 * Dock panels currently on screen, so the menu can tick what is already open
+	 * rather than offer it again.  The dock owns the arrangement; this is the
+	 * part of it the menu needs to read.
+	 */
+	openPanels: readonly string[]
 	/** Machine-word columns the source gutter is showing. */
 	gutterColumns: GutterColumns
 	/** Whether the editor colours line numbers by how often they ran. */
@@ -296,6 +307,12 @@ interface THRAXStore extends CoprocessorState {
 	/** Whether the source editor is showing its find and replace bar. */
 	/** Address the memory view is pointing at, highlighted in the source editor. */
 	hoveredAddress: number | null
+	/**
+	 * The register under the pointer, wherever it is being pointed at.  Named
+	 * rather than indexed, since the history knows a register by its name and the
+	 * three files ($t0, $f0, CP0) share one namespace here.
+	 */
+	hoveredRegister: string | null
 	/** Index into callStack of the selected frame, -1 for the running frame, null for none. */
 	selectedFrame: number | null
 	/** The file whose close is waiting on an answer, or null when none is. */
@@ -318,6 +335,13 @@ interface THRAXStore extends CoprocessorState {
 	 * view both times.
 	 */
 	focusedMemory: { address: number, request: number } | null
+	/**
+	 * Where a click in another panel is sending the eye.  Each carries a request
+	 * counter, so asking for the same place twice is still two navigations and
+	 * lights the destination again.
+	 */
+	focusedSource: { file: string, line: number, request: number } | null
+	focusedRegister: { name: string, request: number } | null
 	hasSavedProgram: boolean
 	/** Instructions per second while running, or null for no pacing. */
 	runSpeed: number | null
@@ -364,9 +388,13 @@ interface THRAXStore extends CoprocessorState {
 	sendKeyboardInput: (input: string) => void
 	run: () => Promise<void>
 	step: () => void
+	/** Puts the machine at one history entry, however far away it is. */
+	moveHistoryTo: (id: number) => void
 	stepBack: () => void
 	/** Asks the memory view to show an address, from a symbol or a history row. */
 	focusMemoryAddress: (address: number) => void
+	focusSourceLine: (file: string, line: number) => void
+	focusRegister: (name: string) => void
 	/** Steps back until the history entry with this id has been undone. */
 	rewindTo: (id: number) => void
 	/**
@@ -393,11 +421,13 @@ interface THRAXStore extends CoprocessorState {
 	/** Writes a machine code word typed into the text segment table. */
 	setBreakpointLines: (file: string, lines: Iterable<number>) => void
 	setHoveredAddress: (address: number | null) => void
+	setHoveredRegister: (name: string | null) => void
 	setSelectedFrame: (frame: number | null) => void
 	setGutterColumns: (columns: GutterColumns) => void
 	setHeatMap: (shown: boolean) => void
 	setHeatMapLines: (shown: boolean) => void
 	setConsoleAttention: (attention: 'none' | 'output' | 'input') => void
+	setOpenPanels: (ids: readonly string[]) => void
 	/** Assembles without reporting failures, to keep the memory view current while editing. */
 	refreshAssembly: () => void
 	reset: () => void
@@ -432,6 +462,26 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 	}
 
 	const tools = createToolRegistry()
+
+	/**
+	 * The tools something is consuming, and so the only ones worth running.
+	 *
+	 * A tool panel consumes the tool of the same name.  The profile has no panel
+	 * of its own: the editor's heat map is what reads it, so the toggle for that
+	 * is what asks for it.
+	 */
+	const wantedTools = (): Set<string> => {
+		const { heatMap, heatMapLines, openPanels } = get()
+		const wanted = new Set<string>(openPanels)
+		if (heatMap || heatMapLines) wanted.add('profile')
+		return wanted
+	}
+
+	/** Re-reads what is being consumed, after anything that changes it. */
+	const syncTools = () => {
+		tools.setWanted(wantedTools())
+		set(tools.views())
+	}
 	// Tool settings outlive the session, so the tools start configured as they
 	// were left rather than at their defaults.
 	const toolSettings = tools.loadSettings()
@@ -463,7 +513,10 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		nextSimulator.configure({ speed: get().runSpeed })
 		// A paced run is worth watching, so refresh the workspace between batches.
 		nextSimulator.onProgress = () => set({ ...simulatorView(), ...tools.views(), isRunning: true, isPaused: false })
+		// Attach first: connecting before the run exists would push the observers
+		// onto the machine being replaced, and configure them with its device port.
 		tools.attach(nextSimulator, { delayedBranching, device: nextSimulator.devicePort() })
+		tools.setWanted(wantedTools())
 		// Breakpoints and the addresses worth stopping at outlive re-assembly.
 		debug.rebind(nextSimulator, program.sourceIndex)
 		return { simulator: nextSimulator, diagnostics }
@@ -604,7 +657,7 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		const layout = MEMORY_CONFIGURATIONS[settings.memoryConfiguration]
 		return {
 			registers: initialRegisters(layout),
-			memory: {},
+			memory: { words: new Map() },
 			console: '',
 			pc: layout.textBaseAddress,
 			halted: false,
@@ -639,10 +692,13 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		settings: initialSettings,
 		...resetExecution(initialSettings),
 		focusedMemory: null,
+		focusedSource: null,
+		focusedRegister: null,
 		breakpointLines: new Map<string, Set<number>>(),
 		breakpointAddresses: new Set<number>(),
 		diagnostics: [],
 		hoveredAddress: null,
+		hoveredRegister: null,
 		selectedFrame: null,
 		pendingClose: null,
 		gutterColumns: savedGutterColumns,
@@ -650,6 +706,7 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		heatMapLines: readStoredSetting(HEAT_MAP_LINES_SETTING, false, (value) => typeof value === 'boolean'),
 		runToken: 0,
 		consoleAttention: 'none',
+		openPanels: [],
 		hasSavedProgram: getSavedProgram() !== null,
 		runSpeed: readStoredSetting<number | null>(RUN_SPEED_SETTING, null, (value) => RUN_SPEEDS.includes(value as number | null)),
 		...tools.views(),
@@ -948,10 +1005,41 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 
 		step: () => controlled(() => debug.step(), paused),
 
+		/**
+		 * Puts the machine at one history entry, publishing once.
+		 *
+		 * Replaying is cheap and publishing is not: twenty thousand of the
+		 * mandelbrot example's instructions replay in 3ms, while snapshotting the
+		 * machine after each costs 30 seconds.  So the whole move happens first and
+		 * the workspace hears about it once.
+		 *
+		 * It steps the machine rather than the session, so it lands on the entry
+		 * asked for: a session step runs on past words the editor cannot point at.
+		 */
+		moveHistoryTo: (id: number) => controlled(() => {
+			const machine = debug.machine
+			if (!machine) return false
+			const index = machine.getExecutionHistory().indexOfId(id)
+			if (index < 0) return false
+			// Behind the present it is a rewind; ahead of it, running forward again.
+			const move = moveToEntry(machine.getHistoryCursor(), index)
+			if (move.rewind) return machine.rewindTo(id)
+			for (let count = 0; count < move.steps; count++) machine.step()
+			return true
+		}, paused),
+
 		stepBack: () => controlled(() => debug.stepBack()),
 
 		focusMemoryAddress: (address: number) => set((state) => ({
 			focusedMemory: { address, request: (state.focusedMemory?.request ?? 0) + 1 },
+		})),
+
+		focusSourceLine: (file: string, line: number) => set((state) => ({
+			focusedSource: { file, line, request: (state.focusedSource?.request ?? 0) + 1 },
+		})),
+
+		focusRegister: (name: string) => set((state) => ({
+			focusedRegister: { name, request: (state.focusedRegister?.request ?? 0) + 1 },
 		})),
 
 		rewindTo: (id: number) => controlled(() => debug.machine?.rewindTo(id) ?? false, paused),
@@ -996,11 +1084,24 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		},
 
 
-		setHoveredAddress: (address) => set({ hoveredAddress: address }),
+		// Pointing at what is already pointed at is not news.  Zustand publishes on
+		// every `set`, and much of the workspace reads the store whole, so an
+		// unguarded write here re-renders every panel on each mouse move.
+		setHoveredAddress: (address) => {
+			if (get().hoveredAddress !== address) set({ hoveredAddress: address })
+		},
+		setHoveredRegister: (name) => {
+			if (get().hoveredRegister !== name) set({ hoveredRegister: name })
+		},
 
 		setSelectedFrame: (frame) => set({ selectedFrame: frame }),
 
 		setConsoleAttention: (attention) => set({ consoleAttention: attention }),
+		setOpenPanels: (ids) => {
+			set({ openPanels: ids })
+			// Opening a tool's panel is what starts it, and closing it is what stops it.
+			syncTools()
+		},
 
 		setGutterColumns: (columns) => {
 			// Word rows widen what stepping stops at, and what a paced run animates,
@@ -1013,11 +1114,13 @@ export const useTHRAXStore = create<THRAXStore>((set, get) => {
 		setHeatMap: (shown) => {
 			writeStoredSetting(HEAT_MAP_SETTING, shown)
 			set({ heatMap: shown })
+			syncTools()
 		},
 
 		setHeatMapLines: (shown) => {
 			writeStoredSetting(HEAT_MAP_LINES_SETTING, shown)
 			set({ heatMapLines: shown })
+			syncTools()
 		},
 
 		setBreakpointLines: (file, lines) => {

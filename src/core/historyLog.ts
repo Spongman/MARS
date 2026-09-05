@@ -106,3 +106,16 @@ export class HistoryLog {
 		for (const block of this.blocks) yield* block
 	}
 }
+
+/**
+ * What it takes to put the machine at the entry at `index`, from a cursor at
+ * `from`.
+ *
+ * Both directions land on the same place: the cursor sits *on* the entry, whose
+ * instruction is the next to run.  Landing anywhere else makes clicking one row
+ * twice move the machine.
+ */
+export function moveToEntry(from: number, index: number): { rewind: boolean, steps: number } {
+	if (index < from) return { rewind: true, steps: 0 }
+	return { rewind: false, steps: index - from }
+}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { memoryKey, parseWord } from '../core/format'
+import { parseWord } from '../core/format'
 import type { MemoryView } from '../core/types'
 import { isOneOf, useStoredState } from '../hooks/useStoredState'
 import './BitmapDisplay.css'
@@ -38,7 +38,7 @@ function BitmapDisplay({ memory }: BitmapDisplayProps) {
 		for (let row = 0; row < rows; row += 1) {
 			for (let column = 0; column < columns; column += 1) {
 				const address = (parsedBaseAddress + ((row * columns + column) * 4)) >>> 0
-				const color = memory[memoryKey(address)]
+				const color = memory.words.get(address >>> 2)
 				if (color === undefined || color === 0) continue
 				context.fillStyle = `#${(color & 0x00ffffff).toString(16).padStart(6, '0')}`
 				context.fillRect(column * unitSize, row * unitSize, unitSize, unitSize)

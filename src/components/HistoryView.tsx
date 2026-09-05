@@ -2,42 +2,89 @@ import React from 'react'
 import './HistoryView.css'
 import { disassemble } from '../core/disassembler'
 import { formatWord } from '../core/format'
+import { KIND_CALL, KIND_CONSOLE, KIND_CONSOLE_RESET, KIND_CP0, KIND_DISPLAY, KIND_EXIT_CODE, KIND_FLAG, KIND_FP, KIND_HALTED, KIND_HEAP_POINTER, KIND_HI_LO, KIND_INPUT, KIND_MEMORY, KIND_QUEUED_INPUT, KIND_REGISTER, KIND_SLEEP } from '../core/effectKind'
 import type { EffectStore } from '../core/effectStore'
 import type { HistoryLog } from '../core/historyLog'
 import type { Effect, HistoryEntry } from '../core/types'
 import { useTHRAXStore } from '../store/thraxStore'
+import { HexWord } from './HexNumber'
+import { rowTop, rowWindow, useFixedRowScroller } from './rowWindow'
 
 const ROW_HEIGHT = 20
 const OVERSCAN_ROWS = 8
 
 /**
- * What one effect did, as the panel words it.  An effect holds the value that
- * is not in the machine, so which side of the present it is on decides whether
- * that reads as the old value or the new one.
+ * What one effect did, taken apart rather than spelled out.
+ *
+ * An effect holds the value that is not in the machine, so which side of the
+ * present it is on decides whether that reads as the old value or the new one:
+ * `applied` puts the value after the arrow instead of before it.
+ *
+ * The parts stay parts because the panel does more with them than print them:
+ * a word goes through the workspace's own hex rendering, a register name is
+ * something to navigate to, and an address is somewhere to send the memory
+ * view.  `label` is the whole of it as text, for a title and for a test.
  */
-export function describeEffect(effect: Effect, applied: boolean): { label: string, address?: number } {
-	const arrow = (held: string) => (applied ? `→ ${held}` : `${held} →`)
+export interface DescribedEffect {
+	/** What changed: a register name, a bracketed address, `console`. */
+	subject: string
+	/** The register file name this names, when a click should go to one. */
+	register?: string
+	/** An address this names, when a click should go to the memory view. */
+	address?: number
+	/** The word held, when the effect holds one. */
+	value?: number
+	/** A second word, since hi and lo move together. */
+	second?: number
+	/** What is held when it is not a word, and was exchanged like one: a flag. */
+	text?: string
+	/**
+	 * What the effect carries rather than what it replaced.  Console text and a
+	 * line of input were not swapped for anything, so no arrow: there is no
+	 * other value to point away from or towards.
+	 */
+	detail?: string
+	/** The value is what the instruction produced rather than what it destroyed. */
+	applied: boolean
+	/** The whole of it as one string. */
+	label: string
+}
+
+function described(applied: boolean, parts: Omit<DescribedEffect, 'applied' | 'label'>): DescribedEffect {
+	const held = parts.value === undefined ? parts.text
+		: parts.second === undefined ? hex(parts.value)
+			: `${hex(parts.value)}/${hex(parts.second)}`
+	const label = held !== undefined
+		? (applied ? `${parts.subject} → ${held}` : `${parts.subject} ${held} →`)
+		: parts.detail !== undefined ? `${parts.subject} ${parts.detail}` : parts.subject
+	return { ...parts, applied, label }
+}
+
+export function describeEffect(effect: Effect, applied: boolean): DescribedEffect {
+	const at = (parts: Omit<DescribedEffect, 'applied' | 'label'>) => described(applied, parts)
 	switch (effect.kind) {
-		case 'register': return { label: `${effect.name} ${arrow(hex(effect.value))}` }
-		case 'fp': return { label: `$f${effect.index} ${arrow(hex(effect.value))}` }
-		case 'flag': return { label: `cc${effect.index} ${arrow(String(effect.value))}` }
-		case 'cp0': return { label: `cp0[${effect.index}] ${arrow(hex(effect.value))}` }
-		case 'memory': {
-			const address = effect.wordAddress << 2
+		case KIND_REGISTER: return at({ subject: effect.name, register: effect.name, value: effect.value })
+		case KIND_FP: return at({ subject: `$f${effect.index}`, register: `$f${effect.index}`, value: effect.value })
+		case KIND_FLAG: return at({ subject: `cc${effect.index}`, text: String(effect.value) })
+		case KIND_CP0: return at({ subject: `cp0[${effect.index}]`, value: effect.value })
+		case KIND_MEMORY: {
+			// Unsigned: a word address in the kernel or the MMIO region shifts into a
+			// negative byte address, which no panel would match.
+			const address = (effect.wordAddress << 2) >>> 0
 			const span = effect.words.length === 1 ? formatWord(address) : `${formatWord(address)}+${effect.words.length * 4}`
-			return { label: `[${span}]`, address }
+			return at({ subject: `[${span}]`, address })
 		}
-		case 'console': return { label: `console ${JSON.stringify(effect.text)}` }
-		case 'consoleReset': return { label: 'console cleared' }
-		case 'display': return { label: 'display' }
-		case 'queuedInput': return { label: 'keyboard read' }
-		case 'call': return { label: `call ${formatWord(effect.frame.targetAddress)}`, address: effect.frame.targetAddress }
-		case 'hiLo': return { label: `hi/lo ${arrow(`${hex(effect.hi)}/${hex(effect.lo)}`)}` }
-		case 'heapPointer': return { label: `heap ${arrow(hex(effect.value))}` }
-		case 'halted': return { label: effect.value ? 'running' : 'halted' }
-		case 'exitCode': return { label: 'exit code' }
-		case 'sleep': return { label: 'sleep' }
-		case 'input': return { label: `read ${JSON.stringify(effect.value)}` }
+		case KIND_CONSOLE: return at({ subject: 'console', detail: JSON.stringify(effect.text) })
+		case KIND_CONSOLE_RESET: return at({ subject: 'console cleared' })
+		case KIND_DISPLAY: return at({ subject: 'display' })
+		case KIND_QUEUED_INPUT: return at({ subject: 'keyboard read' })
+		case KIND_CALL: return at({ subject: `call ${formatWord(effect.frame.targetAddress)}`, address: effect.frame.targetAddress })
+		case KIND_HI_LO: return at({ subject: 'hi/lo', register: '$hi', value: effect.hi, second: effect.lo })
+		case KIND_HEAP_POINTER: return at({ subject: 'heap', value: effect.value })
+		case KIND_HALTED: return at({ subject: effect.value ? 'running' : 'halted' })
+		case KIND_EXIT_CODE: return at({ subject: 'exit code' })
+		case KIND_SLEEP: return at({ subject: 'sleep' })
+		case KIND_INPUT: return at({ subject: 'read', detail: JSON.stringify(effect.value) })
 	}
 }
 
@@ -52,6 +99,98 @@ export function rowEffects(entry: HistoryEntry, effects: EffectStore, applied: b
 		describeEffect(effects.materialize(entry.effectStart + offset), applied))
 }
 
+/**
+ * The subject of a chip, with any address in it spelled the way every other
+ * panel spells one.  Split on the text the subject was built from rather than
+ * carried as separate fields: `label` stays one string for a title and a test,
+ * and a subject that does not contain it simply renders whole.
+ */
+function ChipSubject({ chip }: { chip: DescribedEffect }) {
+	if (chip.address === undefined) return <>{chip.subject}</>
+	const text = formatWord(chip.address)
+	const at = chip.subject.indexOf(text)
+	if (at < 0) return <>{chip.subject}</>
+	return (
+		<>
+			{chip.subject.slice(0, at)}
+			<HexWord value={chip.address} />
+			{chip.subject.slice(at + text.length)}
+		</>
+	)
+}
+
+/**
+ * One effect on a row.  A register chip is the one that moves time: the value
+ * it shows belongs to this instruction, so reaching it means putting the
+ * machine here first.
+ */
+function EffectChip({ chip, hoveredAddress, onHoverAddress, hoveredRegister, onHoverRegister, onRunTo, onSelectAddress, onSelectRegister }: {
+	chip: DescribedEffect
+	hoveredAddress: number | null
+	onHoverAddress: (address: number | null) => void
+	hoveredRegister: string | null
+	onHoverRegister: (name: string | null) => void
+	/** Puts the machine at the entry this chip belongs to. */
+	onRunTo: () => void
+	onSelectAddress: (address: number) => void
+	onSelectRegister: (register: string) => void
+}) {
+	// One element, so the row's gap falls between the parts of the chip rather
+	// than between the `0x` and the digits of one number.
+	const held = chip.value !== undefined
+		? (
+			<span className="history-chip-value">
+				<HexWord value={chip.value} />
+				{chip.second !== undefined && <>/<HexWord value={chip.second} /></>}
+			</span>
+		)
+		: chip.text !== undefined ? <span className="history-chip-value">{chip.text}</span> : null
+	const target = chip.register !== undefined ? 'register' : chip.address !== undefined ? 'address' : null
+	// Everything from the disassembly rightwards runs to the entry, so a chip
+	// with nowhere of its own to go is still worth clicking.
+	const title = chip.register !== undefined ? `Run to here and go to ${chip.register}`
+		: chip.address !== undefined ? `Run to here and show ${formatWord(chip.address)} in memory`
+			: `${chip.label}: run to here`
+	return (
+		<button
+			type="button"
+			className={[
+				'history-chip',
+				target === null ? 'history-chip-inert' : '',
+				chip.address !== undefined && chip.address === hoveredAddress ? 'address-hovered' : '',
+				chip.register !== undefined && chip.register === hoveredRegister ? 'register-hovered' : '',
+			].filter(Boolean).join(' ')}
+			title={title}
+			onMouseEnter={() => {
+				if (chip.address !== undefined) onHoverAddress(chip.address)
+				if (chip.register !== undefined) onHoverRegister(chip.register)
+			}}
+			onMouseLeave={() => {
+				if (chip.address !== undefined) onHoverAddress(null)
+				if (chip.register !== undefined) onHoverRegister(null)
+			}}
+			onClick={(event) => {
+				event.stopPropagation()
+				// Time first, then the panel: the value a chip names belongs to this
+				// instruction, so the machine has to be here before it is looked at.
+				onRunTo()
+				if (chip.register !== undefined) onSelectRegister(chip.register)
+				else if (chip.address !== undefined) onSelectAddress(chip.address)
+			}}
+		>
+			<span className="history-chip-subject"><ChipSubject chip={chip} /></span>
+			{held !== null && (
+				<>
+					{!chip.applied && held}
+					<span className="history-chip-arrow">{'→'}</span>
+					{chip.applied && held}
+				</>
+			)}
+			{chip.detail !== undefined && <span className="history-chip-value">{chip.detail}</span>}
+		</button>
+	)
+}
+
 interface HistoryViewProps {
 	entries: HistoryLog
 	/** How many entries stand behind the present; the rest are ahead of it. */
@@ -62,25 +201,30 @@ interface HistoryViewProps {
 	onSelect: (entry: HistoryEntry) => void
 	onSetNow: (entry: HistoryEntry) => void
 	onSelectAddress: (address: number) => void
+	/** Sends the editor to the line an entry ran. */
+	onSelectSource: (file: string, line: number) => void
+	/**
+	 * Sends the registers panel to `register`.  The chip has already put the
+	 * machine at its entry, since a register in the history is a value at a
+	 * moment and the moment has to be reached first.
+	 */
+	onSelectRegister: (register: string) => void
+	/** Lights the address elsewhere while the pointer is over it here. */
+	onHoverAddress: (address: number | null) => void
+	/** The address under the pointer anywhere, lit here wherever it appears. */
+	hoveredAddress: number | null
+	/** Names the register under the pointer here, so the register file can light it. */
+	onHoverRegister: (name: string | null) => void
+	/** The register under the pointer anywhere, lit here wherever it appears. */
+	hoveredRegister: string | null
 	selectedId: number | null
 	/** The columns every entry's effects are read out of. */
 	effects: EffectStore
 }
 
-function HistoryView({ entries, cursor, version, sourceOf, onSelect, onSetNow, onSelectAddress, selectedId, effects }: HistoryViewProps) {
-	const scrollRef = React.useRef<HTMLDivElement>(null)
-	const [scrollTop, setScrollTop] = React.useState(0)
-	const [height, setHeight] = React.useState(0)
+function HistoryView({ entries, cursor, version, sourceOf, onSelect, onSetNow, onSelectAddress, onSelectSource, onSelectRegister, onHoverAddress, hoveredAddress, onHoverRegister, hoveredRegister, selectedId, effects }: HistoryViewProps) {
+	const { ref: scrollRef, originRef, viewport, scrollTop, frame, onScroll } = useFixedRowScroller(ROW_HEIGHT)
 	const [following, setFollowing] = React.useState(true)
-
-	React.useEffect(() => {
-		const element = scrollRef.current
-		if (!element) return
-		const observer = new ResizeObserver(() => setHeight(element.clientHeight))
-		observer.observe(element)
-		setHeight(element.clientHeight)
-		return () => observer.disconnect()
-	}, [])
 
 	// The list follows the tail while a program runs, until the user scrolls off it.
 	React.useEffect(() => {
@@ -90,72 +234,112 @@ function HistoryView({ entries, cursor, version, sourceOf, onSelect, onSetNow, o
 	}, [version, following])
 
 	const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+		onScroll(event)
 		const element = event.currentTarget
-		setScrollTop(element.scrollTop)
 		const atEnd = element.scrollHeight - element.scrollTop - element.clientHeight < ROW_HEIGHT
 		setFollowing(atEnd)
 	}
 
-	const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN_ROWS)
-	const visible = Math.ceil(height / ROW_HEIGHT) + OVERSCAN_ROWS * 2
-	const rows = entries.slice(first, first + visible)
-
-	if (entries.length === 0) {
-		return <div className="history-view"><div className="history-empty">Step or run a program to fill the history.</div></div>
-	}
+	// A fixed pool of rows pinned by hand, as the memory window draws its own: the
+	// count only changes when the panel is resized, so a scroll rewrites the same
+	// row elements rather than mounting one per entry that came into view.
+	const { first, count } = rowWindow(scrollTop, viewport.height, ROW_HEIGHT, entries.length, OVERSCAN_ROWS)
+	const rows = entries.slice(first, first + count)
 
 	return (
 		<div className="history-view">
 			<div className="history-scroll" ref={scrollRef} onScroll={handleScroll}>
+				{entries.length === 0 && <div className="history-empty">Step or run a program to fill the history.</div>}
 				<div className="history-spacer" style={{ height: entries.length * ROW_HEIGHT }}>
-					<div className="history-rows" style={{ transform: `translateY(${first * ROW_HEIGHT}px)` }}>
-						{rows.map((entry, offset) => {
-							const index = first + offset
-							const ahead = index >= cursor
-							const source = sourceOf(entry)
-							return (
-								<div
-									key={entry.id}
-									className={`history-row${ahead ? ' ahead' : ''}${entry.id === selectedId ? ' selected' : ''}${entry.kind === 'edit' ? ' edit' : ''}`}
-									style={{ height: ROW_HEIGHT }}
-									onClick={() => onSelect(entry)}
-									onDoubleClick={() => onSetNow(entry)}
-									title={ahead ? 'Ahead of the present; double-click to run forward to here' : 'Double-click to step back to here'}
+					{/* Reports where fixed positioning resolves from, for the rows below. */}
+					<span className="history-origin" ref={originRef} />
+					{rows.map((entry, slot) => {
+						const index = first + slot
+						const ahead = index >= cursor
+						// The cursor sits on the instruction about to run: everything
+						// before it has happened, everything from it has not.
+						const next = index === cursor
+						const source = sourceOf(entry)
+						const runToTitle = ahead ? 'Run forward to here' : 'Step back to here'
+						return (
+							<div
+								key={slot}
+								className={`history-row${ahead ? ' ahead' : ''}${entry.id === selectedId ? ' selected' : ''}${entry.kind === 'edit' ? ' edit' : ''}`}
+								style={{ top: rowTop(frame, index, ROW_HEIGHT, scrollTop), left: frame.left, width: frame.width, height: ROW_HEIGHT }}
+								onClick={() => onSelect(entry)}
+								onDoubleClick={() => onSetNow(entry)}
+								title={ahead ? 'Ahead of the present' : 'Already run'}
+							>
+								<span className="history-count">{entry.kind === 'edit' ? 'edit' : entry.instructionCount}</span>
+								<span className={`history-next${next ? ' active' : ''}`} aria-hidden={!next} title={next ? 'The next instruction to run' : undefined} />
+								{/* The address and the source name the same line, so both go there;
+								    hovering either lights it in the editor without moving anything. */}
+								<button
+									type="button"
+									className={`history-address${entry.address === hoveredAddress ? ' address-hovered' : ''}`}
+									title={source ? `Go to ${source.file}:${source.line}` : 'No source line for this address'}
+									disabled={source === null}
+									onMouseEnter={() => onHoverAddress(entry.address)}
+									onMouseLeave={() => onHoverAddress(null)}
+									onClick={(event) => {
+										event.stopPropagation()
+										if (source) onSelectSource(source.file, source.line)
+									}}
 								>
-									<span className="history-count">{entry.kind === 'edit' ? 'edit' : entry.instructionCount}</span>
-									<button
-										type="button"
-										className="history-address"
-										onClick={(event) => {
-											event.stopPropagation()
-											onSelectAddress(entry.address)
-										}}
-									>
-										{formatWord(entry.address)}
-									</button>
-									<span className="history-source">{source ? `${source.file}:${source.line}` : ''}</span>
-									<span className="history-instruction">
-										{entry.kind === 'edit' ? 'edited by hand' : entry.word === null ? '' : disassemble(entry.word)}
-									</span>
-									<span className="history-effects">
-										{rowEffects(entry, effects, ahead).map((described, chip) => (
-											<button
-												key={chip}
-												type="button"
-												className="history-chip"
-												onClick={(event) => {
-													event.stopPropagation()
-													if (described.address !== undefined) onSelectAddress(described.address)
-												}}
-											>
-												{described.label}
-											</button>
-										))}
-									</span>
-								</div>
-							)
-						})}
-					</div>
+									<HexWord value={entry.address} />
+								</button>
+								<button
+									type="button"
+									className="history-source"
+									title={source ? `Go to ${source.file}:${source.line}` : ''}
+									disabled={source === null}
+									onMouseEnter={() => onHoverAddress(entry.address)}
+									onMouseLeave={() => onHoverAddress(null)}
+									onClick={(event) => {
+										event.stopPropagation()
+										if (source) onSelectSource(source.file, source.line)
+									}}
+								>
+									{source ? `${source.file}:${source.line}` : ''}
+								</button>
+								<button
+									type="button"
+									className="history-instruction"
+									title={runToTitle}
+									onClick={(event) => {
+										event.stopPropagation()
+										onSetNow(entry)
+									}}
+								>
+									{entry.kind === 'edit' ? 'edited by hand' : entry.word === null ? '' : disassemble(entry.word)}
+								</button>
+								{/* The effects fill the rest of the row, so the empty space
+								    beyond the last chip runs to the entry as well. */}
+								<span
+									className="history-effects"
+									title={runToTitle}
+									onClick={(event) => {
+										event.stopPropagation()
+										onSetNow(entry)
+									}}
+								>
+									{rowEffects(entry, effects, ahead).map((chip, index) => (
+										<EffectChip
+											key={index}
+											chip={chip}
+											onRunTo={() => onSetNow(entry)}
+											hoveredAddress={hoveredAddress}
+											onHoverAddress={onHoverAddress}
+											hoveredRegister={hoveredRegister}
+											onHoverRegister={onHoverRegister}
+											onSelectAddress={onSelectAddress}
+											onSelectRegister={onSelectRegister}
+										/>
+									))}
+								</span>
+							</div>
+						)
+					})}
 				</div>
 			</div>
 		</div>
@@ -164,18 +348,15 @@ function HistoryView({ entries, cursor, version, sourceOf, onSelect, onSetNow, o
 
 /** The history of the program the workspace is running. */
 export function HistoryPanel() {
-	const { executionHistory, historyCursor, historyEffects, historyVersion, sourceIndex, focusMemoryAddress, rewindTo, step } = useTHRAXStore()
+	const { executionHistory, historyCursor, historyEffects, historyVersion, hoveredAddress, hoveredRegister, sourceIndex, focusMemoryAddress, focusRegister, focusSourceLine, moveHistoryTo, setHoveredAddress, setHoveredRegister } = useTHRAXStore()
 	const [selectedId, setSelectedId] = React.useState<number | null>(null)
 
 	const sourceOf = React.useCallback((entry: HistoryEntry) => sourceIndex.lineForAddress(entry.address), [sourceIndex])
 
 	const setNow = React.useCallback((entry: HistoryEntry) => {
-		const index = executionHistory.indexOfId(entry.id)
-		if (index < 0) return
-		// Behind the present it is a rewind; ahead of it, running forward again.
-		if (index < historyCursor) rewindTo(entry.id)
-		else for (let count = historyCursor; count <= index; count++) step()
-	}, [executionHistory, historyCursor, rewindTo, step])
+		setSelectedId(entry.id)
+		moveHistoryTo(entry.id)
+	}, [moveHistoryTo])
 
 	return (
 		<HistoryView
@@ -188,6 +369,12 @@ export function HistoryPanel() {
 			onSelect={(entry) => setSelectedId(entry.id)}
 			onSetNow={setNow}
 			onSelectAddress={focusMemoryAddress}
+			onSelectSource={focusSourceLine}
+			onSelectRegister={focusRegister}
+			onHoverAddress={setHoveredAddress}
+			hoveredAddress={hoveredAddress}
+			onHoverRegister={setHoveredRegister}
+			hoveredRegister={hoveredRegister}
 		/>
 	)
 }

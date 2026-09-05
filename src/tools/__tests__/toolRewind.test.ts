@@ -79,7 +79,14 @@ describe('the tools roll back with the machine', () => {
 
 		for (let pass = 0; pass < 3; pass++) {
 			while (simulator.stepBack()) { /* to the start */ }
-			expect(views(tools).statistics.total).toBe(0)
+			const start = views(tools)
+			expect(start.statistics.total).toBe(0)
+			// All the way back is empty, not merely zeroed: the profile keeps one
+			// record per instruction naming the address it touched, so undoing the
+			// first visit to an address has to take the address away again.
+			expect(start.profile.byAddress.size).toBe(0)
+			expect(start.profile.total).toBe(0)
+			expect(start.profile.max).toBe(0)
 			stepTo(simulator, 80)
 			expect(views(tools)).toEqual(settled)
 		}

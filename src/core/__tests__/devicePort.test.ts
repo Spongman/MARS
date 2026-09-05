@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { Kind } from '../effectKind'
 import { Assembler } from '../assembler'
 import { firstError } from '../diagnostics'
 import { MipsSimulator } from '../simulator'
@@ -67,7 +68,7 @@ describe('a memory-mapped device can answer the program', () => {
 		const history = simulator.getExecutionHistory()
 		const edits = [...history].filter((entry) => entry.kind === 'edit')
 		expect(edits).toHaveLength(1)
-		expect(simulator.effects.kindAt(edits[0].effectStart)).toBe('memory')
+		expect(simulator.effects.kindAt(edits[0].effectStart)).toBe(Kind.MEMORY)
 	})
 
 	it('rolls back with everything else', () => {

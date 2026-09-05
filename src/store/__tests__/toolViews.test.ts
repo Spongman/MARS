@@ -29,6 +29,12 @@ data:	.word 0
 	syscall
 `
 
+/**
+ * A tool runs only while something is consuming it, so a test that reads one
+ * has to open its panel first, exactly as the workspace does.
+ */
+const open = (...ids: string[]) => useTHRAXStore.getState().setOpenPanels(ids)
+
 describe('ported tool views', () => {
 	it('seeds every ported tool snapshot and its settings', () => {
 		const state = useTHRAXStore.getState()
@@ -39,6 +45,7 @@ describe('ported tool views', () => {
 	})
 
 	it('publishes the memory reference readings a run takes', async () => {
+		open('memoryReference')
 		useTHRAXStore.getState().setCode(PROGRAM)
 		useTHRAXStore.getState().assemble()
 		await useTHRAXStore.getState().run()
@@ -49,6 +56,7 @@ describe('ported tool views', () => {
 	})
 
 	it('publishes what an MMIO device tool sees a run write', async () => {
+		open('marsBot')
 		// 0xffff8010 does not fit a signed 16-bit sw offset, so build it in a register.
 		useTHRAXStore.getState().setCode(`
 			li $t0, 90

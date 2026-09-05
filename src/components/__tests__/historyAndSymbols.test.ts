@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { Kind } from '../../core/effectKind'
 import { describeEffect, rowEffects } from '../HistoryView'
 import { symbolRows, symbolSections } from '../SymbolTableView'
 import { parseEditedDouble, parseEditedValue } from '../editValue'
@@ -6,7 +7,7 @@ import { EffectStore } from '../../core/effectStore'
 import type { Effect, HistoryEntry, SymbolTables } from '../../core/types'
 
 describe('what a history row says about an effect', () => {
-	const register: Effect = { kind: 'register', name: '$t0', value: 5 }
+	const register: Effect = { kind: Kind.REGISTER, name: '$t0', value: 5 }
 
 	it('reads the held value as the old one behind the present', () => {
 		// Behind the cursor the effect holds what the instruction destroyed.
@@ -19,24 +20,39 @@ describe('what a history row says about an effect', () => {
 	})
 
 	it('names a run of memory once, with the span it covers', () => {
-		const effect: Effect = { kind: 'memory', wordAddress: 0x10010000 >>> 2, words: [1, 2, 3] }
-		expect(describeEffect(effect, false)).toEqual({ label: '[0x10010000+12]', address: 0x10010000 })
+		const effect: Effect = { kind: Kind.MEMORY, wordAddress: 0x10010000 >>> 2, words: [1, 2, 3] }
+		expect(describeEffect(effect, false)).toEqual({ subject: '[0x10010000+12]', label: '[0x10010000+12]', address: 0x10010000, applied: false })
 	})
 
 	it('gives a single word its plain address', () => {
-		const effect: Effect = { kind: 'memory', wordAddress: 0x10010004 >>> 2, words: [0] }
-		expect(describeEffect(effect, false)).toEqual({ label: '[0x10010004]', address: 0x10010004 })
+		const effect: Effect = { kind: Kind.MEMORY, wordAddress: 0x10010004 >>> 2, words: [0] }
+		expect(describeEffect(effect, false)).toEqual({ subject: '[0x10010004]', label: '[0x10010004]', address: 0x10010004, applied: false })
+	})
+
+	it('points a click at the register a value belongs to', () => {
+		// The chip is how a register in the past is reached, so the name has to
+		// survive being described rather than being folded into the text.
+		expect(describeEffect(register, false).register).toBe('$t0')
+		expect(describeEffect({ kind: Kind.FP, index: 3, value: 1 }, false).register).toBe('$f3')
+		// A word the panel renders itself, rather than a string it cannot dim.
+		expect(describeEffect(register, false).value).toBe(5)
+	})
+
+	it('leaves console text and a line of input without an arrow', () => {
+		// Neither replaced a value, so there is nothing for an arrow to point at.
+		expect(describeEffect({ kind: Kind.INPUT, value: '42' }, false).detail).toBe('"42"')
+		expect(describeEffect({ kind: Kind.INPUT, value: '42' }, true).label).toBe('read "42"')
 	})
 
 	it('shows what a syscall read and what it printed', () => {
-		expect(describeEffect({ kind: 'input', value: '42' }, false)?.label).toBe('read "42"')
-		expect(describeEffect({ kind: 'console', text: 'hi' }, false)?.label).toBe('console "hi"')
+		expect(describeEffect({ kind: Kind.INPUT, value: '42' }, false)?.label).toBe('read "42"')
+		expect(describeEffect({ kind: Kind.CONSOLE, text: 'hi' }, false)?.label).toBe('console "hi"')
 	})
 
 	it('gives a row one chip per effect, read back out of the columns', () => {
 		const effects = new EffectStore()
 		const start = effects.beginRun()
-		effects.push('register', 8, 5)
+		effects.push(Kind.REGISTER, 8, 5)
 		const { count } = effects.endRun()
 		const entry: HistoryEntry = {
 			id: 1,

@@ -1,3 +1,4 @@
+import { opFor } from '../ops'
 import { describe, expect, it } from 'vitest'
 import { decode } from '../decoder'
 import { disassemble } from '../disassembler'
@@ -42,7 +43,7 @@ describe('opcode 1 decoding', () => {
 		['teqi $t0, 5', 'TEQI'],
 		['tnei $t0, 5', 'TNEI'],
 	])('decodes %s as itself', (source, op) => {
-		expect(decode(words(`here: ${source}`)[0])?.op).toBe(op)
+		expect(decode(words(`here: ${source}`)[0])?.op).toBe(opFor(op))
 	})
 
 	it('rejects a reserved rt rather than reading it as a branch', () => {

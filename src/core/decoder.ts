@@ -10,6 +10,7 @@
  */
 
 import { type BasicInstruction, basicForms, findByBinary, type IsaField, type IsaOperandKind } from './isa'
+import { opFor } from './ops'
 
 /**
  * How a decoded instruction's operands are laid out, for formatting.  Derived
@@ -59,8 +60,8 @@ export interface DecodedOperand {
 }
 
 export interface Decoded {
-	/** Canonical mnemonic in the assembler's spelling, such as `ADD` or `C.LT.S`. */
-	op: string
+	/** Which instruction this is; `OP_NAMES` spells it. */
+	op: number
 	shape: OperandShape
 	rs: number
 	rt: number
@@ -188,7 +189,7 @@ export function decode(word: number): Decoded | null {
 	const condition = operands.find((operand) => operand.kind === 'imm3')
 	const immediate = value & 0xffff
 	return {
-		op: form.mnemonic.toUpperCase(),
+		op: opFor(form.mnemonic) ?? -1,
 		shape: shapeOf(form),
 		rs: (value >>> 21) & 0x1f,
 		rt: (value >>> 16) & 0x1f,

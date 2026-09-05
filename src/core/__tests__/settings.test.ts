@@ -5,6 +5,7 @@ import {
 	MAX_BACKSTEP_LIMIT,
 	MEMORY_CONFIGURATIONS,
 	SETTINGS_VALIDATORS,
+	isMappedAddress,
 	type ThraxSettings,
 } from '../settings'
 
@@ -33,6 +34,13 @@ describe('DEFAULT_SETTINGS', () => {
 			// default is what it takes to rewind a small program from its end.
 			backstepLimit: 100_000,
 			hexDimming: 'nibbles', // THRAX's own: how far a hex number's leading zeros are dimmed
+			// THRAX's own, and on: a click that moves another panel is worth
+			// following, and a value that moved is worth seeing move.
+			highlightNavigation: true,
+			highlightChanges: true,
+			highlightSeconds: 2.5,
+			highlightNavigationColor: '#4094ff',
+			highlightChangeColor: '#f0a830',
 		})
 	})
 })
@@ -209,5 +217,33 @@ describe('isValidSettings', () => {
 		expect(isValidSettings(null)).toBe(false)
 		expect(isValidSettings(undefined)).toBe(false)
 		expect(isValidSettings('settings')).toBe(false)
+	})
+})
+
+describe('what counts as an address', () => {
+	const layout = MEMORY_CONFIGURATIONS.default
+
+	it('rejects the value most registers hold', () => {
+		// Zero sits below the text base in every configuration, so a file of empty
+		// registers names no address at all.
+		expect(isMappedAddress(0, layout)).toBe(false)
+		expect(isMappedAddress(1, layout)).toBe(false)
+	})
+
+	it('accepts an address in user space or the kernel', () => {
+		expect(isMappedAddress(layout.textBaseAddress, layout)).toBe(true)
+		expect(isMappedAddress(layout.dataBaseAddress, layout)).toBe(true)
+		expect(isMappedAddress(layout.stackPointer, layout)).toBe(true)
+		// The memory-mapped devices sit inside the kernel range, above 0x7fffffff,
+		// so the comparison has to be unsigned.
+		expect(isMappedAddress(layout.memoryMapBaseAddress, layout)).toBe(true)
+		expect(isMappedAddress(layout.kernelHighAddress, layout)).toBe(true)
+	})
+
+	it('rejects everything below the text base, which is the only unmapped region', () => {
+		// User space runs to 0x7fffffff and the kernel starts at 0x80000000, so the
+		// two are contiguous: what is left out is only the space beneath the text.
+		expect(isMappedAddress(layout.textBaseAddress - 4, layout)).toBe(false)
+		expect(isMappedAddress(layout.userHighAddress + 1, layout)).toBe(true)
 	})
 })

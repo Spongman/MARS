@@ -41,21 +41,39 @@ export function heatLevel(count: number, max: number) {
 	return Math.min(HEAT_LEVELS - 1, Math.floor(share * HEAT_LEVELS))
 }
 
-interface ProfileState { addresses: Map<number, AddressProfile>, total: number, max: number }
+/**
+ * What the tool held for the one address an instruction touches, which is all
+ * an instruction can change.
+ *
+ * Copying the whole address map on every instruction cost more than the run
+ * itself: a map of the addresses a program touches, rebuilt a hundred thousand
+ * times.  Like the machine's own effects, this holds the values that are **not**
+ * in the tool, so exchanging it serves both directions.
+ */
+interface ProfileState {
+	address: number
+	/** The counts as they stood, or null where the address had none yet. */
+	entry: AddressProfile | null
+	total: number
+	max: number
+}
 
 export class ExecutionProfile implements ExecutionObserver {
 	private addresses = new Map<number, AddressProfile>()
 	private total = 0
 	private max = 0
 	private readonly history = new RewindLog<ProfileState>()
+	/** The address the instruction being recorded is about to touch. */
+	private touching = 0
 	private readonly state: RewindableState<ProfileState> = {
-		capture: () => {
-			const addresses = new Map<number, AddressProfile>()
-			for (const [address, entry] of this.addresses) addresses.set(address, { ...entry })
-			return { addresses, total: this.total, max: this.max }
+		capture: (previous) => {
+			const address = previous ? previous.address : this.touching
+			const entry = this.addresses.get(address)
+			return { address, entry: entry ? { ...entry } : null, total: this.total, max: this.max }
 		},
 		restore: (state) => {
-			this.addresses = state.addresses
+			if (state.entry) this.addresses.set(state.address, state.entry)
+			else this.addresses.delete(state.address)
 			this.total = state.total
 			this.max = state.max
 		},
@@ -76,6 +94,9 @@ export class ExecutionProfile implements ExecutionObserver {
 	}
 
 	onInstruction(address: number, _decoded?: unknown, instructionCount = 0) {
+		// The branch that follows resolves at this same address, so one address
+		// covers everything the instruction can touch.
+		this.touching = address >>> 0
 		this.history.record(instructionCount, this.state)
 		const entry = this.entryFor(address)
 		entry.count += 1

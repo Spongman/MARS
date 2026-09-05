@@ -8,23 +8,32 @@
 }
 
 .history-scroll {
+	/* clip-path makes this element the containing block for the fixed rows below
+	   and clips them to the scroller, which overflow alone cannot do. */
+	clip-path: inset(0);
 	flex: 1;
 	overflow: auto;
 }
 
+/* Stands the full height of the log, so the scrollbar reads the whole of it
+   while only the rows under the viewport exist. */
 .history-spacer {
 	position: relative;
 }
 
-.history-rows {
-	position: absolute;
+/* Reports where fixed positioning resolves from, for the row offsets above. */
+.history-origin {
+	position: fixed;
 	top: 0;
 	left: 0;
-	right: 0;
-	will-change: transform;
+	width: 0;
+	height: 0;
 }
 
+/* Pinned against the measured frame by index rather than laid out in order: a
+   row is a slot in a pool, and which entry it draws changes as it is scrolled. */
 .history-row {
+	position: fixed;
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -52,6 +61,20 @@
 	opacity: 0.8;
 }
 
+/* The instruction about to run, marked as the editor marks it. */
+.history-next {
+	width: 0;
+	height: 0;
+	flex: none;
+	margin-right: 2px;
+}
+
+.history-next.active {
+	border-top: 5px solid transparent;
+	border-bottom: 5px solid transparent;
+	border-left: 7px solid var(--warning);
+}
+
 .history-count {
 	width: 5em;
 	text-align: right;
@@ -60,22 +83,48 @@
 }
 
 .history-address,
+.history-source,
+.history-instruction,
 .history-chip {
 	background: none;
 	border: none;
 	padding: 0;
 	font: inherit;
 	color: inherit;
+	text-align: left;
 	cursor: pointer;
 }
 
+/* An address reads as one wherever it is shown, so it takes the colour and the
+   hover the memory window gives its own. */
 .history-address {
 	flex: none;
+	color: var(--data-register);
 }
 
-.history-address:hover,
-.history-chip:hover {
-	text-decoration: underline;
+.history-chip-subject {
+	color: var(--data-register);
+}
+
+.history-address:hover:not(:disabled),
+.history-source:hover:not(:disabled),
+.history-chip:hover:not(:disabled) {
+	background: var(--accent-surface);
+	color: var(--text-bright);
+	border-radius: var(--radius);
+}
+
+.history-address:hover:not(:disabled) .hex-zero,
+.history-chip:hover:not(:disabled) .hex-zero {
+	opacity: 0.7;
+}
+
+/* Nothing to go to, so it reads as text rather than offering a click.  A chip
+   is never in this state: even one that names nothing runs to its entry. */
+.history-address:disabled,
+.history-source:disabled {
+	cursor: default;
+	text-decoration: none;
 }
 
 .history-source {
@@ -86,22 +135,52 @@
 	flex: none;
 }
 
+/* From here rightwards a click puts the machine at this instruction. */
 .history-instruction {
 	width: 16em;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	white-space: nowrap;
 	flex: none;
+}
+
+.history-instruction:hover {
+	background: var(--accent-surface);
+	color: var(--text-bright);
+	border-radius: var(--radius);
 }
 
 .history-effects {
 	display: flex;
+	align-items: center;
 	gap: 8px;
 	overflow: hidden;
 	min-width: 0;
+	/* Fills the rest of the row, so the space past the last chip is still a
+	   place to click. */
+	flex: 1;
+	cursor: pointer;
 }
 
 .history-chip {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 3px;
+	white-space: nowrap;
 	opacity: 0.85;
+}
+
+.history-chip-inert .history-chip-subject {
+	color: inherit;
+}
+
+/* One element, so the row's gap does not fall between `0x` and its digits. */
+.history-chip-value {
+	white-space: nowrap;
+}
+
+.history-chip-arrow {
+	opacity: 0.5;
 }
 
 .history-empty {

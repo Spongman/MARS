@@ -22,15 +22,31 @@ import {
 	singleToBits,
 } from './coprocessor'
 import { decode, type Decoded } from './decoder'
-import { formatWordDigits, memoryKey } from './format'
+import { Op, OP_NAMES } from './ops'
+
+/**
+ * The ops the dispatch below switches on, as bindings of this module.
+ *
+ * `case Op.ADD:` reads a property of a class carrying a hundred and forty of
+ * them, which puts it in dictionary mode: each case becomes a hash lookup, and
+ * eighty-two of those per instruction cost twice what switching on the mnemonic
+ * string did.  Bound here once, the cases are plain reads and the switch runs
+ * as fast as if the numbers were written into it: 47ms against 65ms for the
+ * strings and 130ms for the properties, over the mandelbrot example.
+ */
+const { ADD, ADDI, ADDIU, ADDU, AND, ANDI, BC1F, BC1T, BEQ, BGEZ, BGEZAL, BGTZ, BLEZ, BLTZ, BLTZAL, BNE, BREAK, CLO, CLZ, DIV, DIVU, ERET, J, JAL, JALR, JR, LB, LBU, LDC1, LH, LHU, LL, LUI, LW, LWC1, LWL, LWR, MADD, MADDU, MFC0, MFC1, MFHI, MFLO, MOVF, MOVN, MOVT, MOVZ, MSUB, MSUBU, MTC0, MTC1, MTHI, MTLO, MUL, MULT, MULTU, NOR, OR, ORI, SB, SC, SDC1, SH, SLL, SLLV, SLT, SLTI, SLTIU, SLTU, SRA, SRAV, SRL, SRLV, SUB, SUBU, SW, SWC1, SWL, SWR, SYSCALL, XOR, XORI } = Op
+
+import { formatWordDigits } from './format'
 import { FileTable, STDERR, STDOUT } from './files'
 import type { DevicePort, ExecutionObserver } from './observer'
 import { RandomStreams } from './random'
-import { EffectStore, type EffectKind } from './effectStore'
+import { EffectStore } from './effectStore'
+import { KIND_REGISTER, KIND_FP, KIND_FLAG, KIND_CP0, KIND_MEMORY, KIND_CONSOLE, KIND_CONSOLE_RESET, KIND_DISPLAY, KIND_QUEUED_INPUT, KIND_CALL, KIND_HI_LO, KIND_HEAP_POINTER, KIND_HALTED, KIND_EXIT_CODE, KIND_SLEEP, KIND_INPUT } from './effectKind'
+
 import { HistoryLog } from './historyLog'
 import { REGISTER_FILE_NAMES, REGISTER_NAMES, registerFileIndex } from './registers'
 import { DEFAULT_BACKSTEP_LIMIT, MEMORY_CONFIGURATIONS, type MemoryConfigurationValues } from './settings'
-import type { CallFrame, DelayState, Effect, HistoryEntry, KeyboardDisplayState, MipsInstruction, MipsProgram, PendingInput, Registers, SimulatorState } from './types'
+import type { CallFrame, DelayState, Effect, HistoryEntry, KeyboardDisplayState, MemoryView, MipsInstruction, MipsProgram, PendingInput, Registers, SimulatorState } from './types'
 
 /** Cause codes for a bad address, by whether it was a load or a store. */
 const EXCEPTION_ADDRESS_LOAD = 4
@@ -43,27 +59,64 @@ const EXCEPTION_ARITHMETIC_OVERFLOW = 12
 const EXCEPTION_TRAP = 13
 
 /** The CP1 moves that copy on a condition rather than unconditionally. */
-const FP_CONDITIONAL_MOVES: ReadonlySet<string> = new Set(['MOVN', 'MOVZ', 'MOVT', 'MOVF'])
+const FP_CONDITIONAL_MOVES: ReadonlySet<string> = new Set(['movn', 'movz', 'movt', 'movf'])
 
 /**
  * The twelve traps, each a comparison against a register or a sign-extended
  * immediate.  The unsigned comparisons are spelled as a sign test upstream;
  * comparing the two words unsigned is the same thing.
  */
-const TRAP_FORMS: Record<string, { immediate: boolean, holds: (left: number, right: number) => boolean }> = {
-	TEQ: { immediate: false, holds: (left, right) => left === right },
-	TEQI: { immediate: true, holds: (left, right) => left === right },
-	TNE: { immediate: false, holds: (left, right) => left !== right },
-	TNEI: { immediate: true, holds: (left, right) => left !== right },
-	TGE: { immediate: false, holds: (left, right) => left >= right },
-	TGEI: { immediate: true, holds: (left, right) => left >= right },
-	TGEU: { immediate: false, holds: (left, right) => (left >>> 0) >= (right >>> 0) },
-	TGEIU: { immediate: true, holds: (left, right) => (left >>> 0) >= (right >>> 0) },
-	TLT: { immediate: false, holds: (left, right) => left < right },
-	TLTI: { immediate: true, holds: (left, right) => left < right },
-	TLTU: { immediate: false, holds: (left, right) => (left >>> 0) < (right >>> 0) },
-	TLTIU: { immediate: true, holds: (left, right) => (left >>> 0) < (right >>> 0) },
+const TRAP_FORMS: Record<string, TrapForm> = {
+	teq: { immediate: false, holds: (left, right) => left === right },
+	teqi: { immediate: true, holds: (left, right) => left === right },
+	tne: { immediate: false, holds: (left, right) => left !== right },
+	tnei: { immediate: true, holds: (left, right) => left !== right },
+	tge: { immediate: false, holds: (left, right) => left >= right },
+	tgei: { immediate: true, holds: (left, right) => left >= right },
+	tgeu: { immediate: false, holds: (left, right) => (left >>> 0) >= (right >>> 0) },
+	tgeiu: { immediate: true, holds: (left, right) => (left >>> 0) >= (right >>> 0) },
+	tlt: { immediate: false, holds: (left, right) => left < right },
+	tlti: { immediate: true, holds: (left, right) => left < right },
+	tltu: { immediate: false, holds: (left, right) => (left >>> 0) < (right >>> 0) },
+	tltiu: { immediate: true, holds: (left, right) => (left >>> 0) < (right >>> 0) },
 }
+
+type TrapForm = { immediate: boolean, holds: (left: number, right: number) => boolean }
+
+/**
+ * What a dotted CP1 mnemonic asks for, and what a trap compares, worked out
+ * once per op rather than at every execution.
+ *
+ * Which format a dotted mnemonic names, and what a trap compares, are both a
+ * property of the op and never change for it.  Settling them here means an
+ * execution indexes a table rather than taking a name apart.
+ */
+type FpForm =
+	| { form: 'arithmetic', operation: string, format: string }
+	| { form: 'conditionalMove', operation: string, format: string }
+	| { form: 'compare', comparison: string, format: string }
+	| { form: 'convert', target: string, source: string }
+	| { form: 'round', operation: string, format: string }
+
+/** The order these are tried in is the order the mnemonics disambiguate in. */
+function fpFormOf(name: string): FpForm | undefined {
+	const [first, second, third, ...rest] = name.split('.')
+	if (rest.length > 0) return undefined
+	if (third === undefined) {
+		if (second === undefined) return undefined
+		return FP_CONDITIONAL_MOVES.has(first)
+			? { form: 'conditionalMove', operation: first, format: second }
+			: { form: 'arithmetic', operation: first, format: second }
+	}
+	if (first === 'c') return { form: 'compare', comparison: second, format: third }
+	if (first === 'cvt') return { form: 'convert', target: second, source: third }
+	if (second === 'w') return { form: 'round', operation: first, format: third }
+	return undefined
+}
+
+/** One entry per op, so the form is an index rather than a parse or a hash. */
+const FP_FORMS: readonly (FpForm | undefined)[] = OP_NAMES.map(fpFormOf)
+const OP_TRAP_FORMS: readonly (TrapForm | undefined)[] = OP_NAMES.map((name) => TRAP_FORMS[name])
 
 /**
  * Where instructions may live, under the selected memory configuration.
@@ -811,8 +864,7 @@ export class MipsSimulator {
 	 */
 	private applyEffect(index: number) {
 		const effects = this.effects
-		const a = effects.aAt(index)
-		const b = effects.bAt(index)
+		const { kind, a, b, value } = effects.slotAt(index)
 
 		/** Puts `held` in the column and hands back what was there. */
 		const swapB = (held: number) => {
@@ -820,26 +872,26 @@ export class MipsSimulator {
 			return b
 		}
 
-		switch (effects.kindAt(index)) {
-			case 'register': {
+		switch (kind) {
+			case KIND_REGISTER: {
 				const name = REGISTER_FILE_NAMES[a]
 				this.registers[name] = swapB(this.registers[name])
 				return
 			}
-			case 'fp':
+			case KIND_FP:
 				this.fpRegisters[a] = swapB(this.fpRegisters[a])
 				return
-			case 'flag': {
+			case KIND_FLAG: {
 				const held = this.fpConditionFlags[a]
 				this.fpConditionFlags[a] = b !== 0
 				effects.setB(index, held ? 1 : 0)
 				return
 			}
-			case 'cp0':
+			case KIND_CP0:
 				this.cp0Registers[a] = swapB(this.cp0Registers[a])
 				return
-			case 'memory': {
-				const words = effects.valueAt(index) as Array<number | undefined>
+			case KIND_MEMORY: {
+				const words = value as Array<number | undefined>
 				for (let offset = 0; offset < words.length; offset++) {
 					const address = a + offset
 					const held = this.memory.get(address)
@@ -853,40 +905,40 @@ export class MipsSimulator {
 				return
 			}
 			// Going back drops the text; going forward puts it back on the end.
-			case 'console': {
-				const text = effects.valueAt(index) as string
+			case KIND_CONSOLE: {
+				const text = value as string
 				this.console = this.console.endsWith(text)
 					? this.console.slice(0, this.console.length - text.length)
 					: this.console + text
 				return
 			}
-			case 'consoleReset': {
+			case KIND_CONSOLE_RESET: {
 				const held = this.console
-				this.console = effects.valueAt(index) as string
+				this.console = value as string
 				effects.setValue(index, held)
 				return
 			}
-			case 'display': {
+			case KIND_DISPLAY: {
 				const held = this.keyboardDisplay.displayOutput
-				this.keyboardDisplay.displayOutput = effects.valueAt(index) as string
+				this.keyboardDisplay.displayOutput = value as string
 				effects.setValue(index, held)
 				return
 			}
-			case 'queuedInput': {
+			case KIND_QUEUED_INPUT: {
 				const held = this.keyboardDisplay.queuedInput
-				this.keyboardDisplay.queuedInput = effects.valueAt(index) as string
+				this.keyboardDisplay.queuedInput = value as string
 				effects.setValue(index, held)
 				return
 			}
 			// On top means it was put there, so this takes it off, and the other
 			// way round; that is what makes a push and a pop one effect.
-			case 'call': {
-				const frame = effects.valueAt(index) as CallFrame
+			case KIND_CALL: {
+				const frame = value as CallFrame
 				if (this.callStack[this.callStack.length - 1] === frame) this.callStack.pop()
 				else this.callStack.push(frame)
 				return
 			}
-			case 'hiLo': {
+			case KIND_HI_LO: {
 				const hi = this.hi
 				const lo = this.lo
 				this.hi = a
@@ -897,27 +949,27 @@ export class MipsSimulator {
 				effects.setB(index, lo)
 				return
 			}
-			case 'heapPointer':
+			case KIND_HEAP_POINTER:
 				this.heapPointer = swapB(this.heapPointer)
 				return
-			case 'halted': {
+			case KIND_HALTED: {
 				const held = this.halted
 				this.halted = b !== 0
 				effects.setB(index, held ? 1 : 0)
 				return
 			}
-			case 'exitCode': {
+			case KIND_EXIT_CODE: {
 				const held = this.exitCode
 				this.exitCode = a === 0 ? null : b
 				effects.setA(index, held === null ? 0 : 1)
 				effects.setB(index, held ?? 0)
 				return
 			}
-			case 'sleep':
+			case KIND_SLEEP:
 				this.pendingSleepMs = swapB(this.pendingSleepMs)
 				return
 			// The registers and memory the answer landed in carry it both ways.
-			case 'input':
+			case KIND_INPUT:
 				return
 		}
 	}
@@ -1039,7 +1091,7 @@ export class MipsSimulator {
 	 * Effects go straight into the shared store, since an entry's are written in
 	 * one unbroken run.
 	 */
-	private record(kind: EffectKind, a: number, b: number, value?: unknown) {
+	private record(kind: number, a: number, b: number, value?: unknown) {
 		if (this.entry) this.effects.push(kind, a, b, value)
 	}
 
@@ -1064,7 +1116,10 @@ export class MipsSimulator {
 		const entry = this.entry
 		if (!entry) return
 		const last = this.effects.position - 1
-		if (last >= this.effects.openRunStart && this.effects.kindAt(last) === 'memory') {
+		// The kind first, on its own: this runs on every word a program stores, and
+		// reading the whole slot to find out it is not a memory effect would build
+		// an object and look up a value for nothing.
+		if (last >= this.effects.openRunStart && this.effects.kindAt(last) === KIND_MEMORY) {
 			const words = this.effects.valueAt(last) as Array<number | undefined>
 			const offset = wordAddress - this.effects.aAt(last)
 			if (offset >= 0 && offset < words.length) return
@@ -1073,7 +1128,7 @@ export class MipsSimulator {
 				return
 			}
 		}
-		this.effects.push('memory', wordAddress, 0, [this.memory.get(wordAddress)])
+		this.effects.push(KIND_MEMORY, wordAddress, 0, [this.memory.get(wordAddress)])
 	}
 
 	/**
@@ -1118,7 +1173,7 @@ export class MipsSimulator {
 	async stepOver() {
 		// A call runs to completion; anything else is a plain step.
 		const decoded = this.decodeAt(this.pc)
-		if (decoded?.op === 'JAL' || decoded?.op === 'JALR') {
+		if (decoded?.op === JAL || decoded?.op === JALR) {
 			// The return address the call itself links, which skips the delay slot.
 			await this.runToTemporaryBreakpoint((this.pc + (this.delayedBranching ? 8 : 4)) | 0, true)
 			return
@@ -1235,13 +1290,13 @@ export class MipsSimulator {
 	 * handler address as an unsigned word, which `| 0` would turn negative.
 	 */
 	writeRegNamed(name: string, value: number) {
-		this.record('register', registerFileIndex(name), this.registers[name])
+		this.record(KIND_REGISTER, registerFileIndex(name), this.registers[name])
 		this.registers[name] = value
 	}
 
 	/** Hi and Lo are register-file entries as well as fields, so they move together. */
 	private setHiLo(hi: number, lo: number) {
-		this.record('hiLo', this.hi, this.lo)
+		this.record(KIND_HI_LO, this.hi, this.lo)
 		this.hi = hi | 0
 		this.lo = lo | 0
 		// One effect covers both the fields and their register-file entries.
@@ -1251,20 +1306,20 @@ export class MipsSimulator {
 
 	/** Every coprocessor 0 write ends here; the value is stored as given. */
 	writeCp0(register: number, value: number) {
-		this.record('cp0', register, this.cp0Registers[register])
+		this.record(KIND_CP0, register, this.cp0Registers[register])
 		this.cp0Registers[register] = value
 	}
 
 	/** Everything the program prints passes through here. */
 	writeConsole(text: string) {
 		if (text.length === 0) return
-		this.record('console', 0, text.length, text)
+		this.record(KIND_CONSOLE, 0, text.length, text)
 		this.console += text
 	}
 
 	/** Syscall 60 empties the console rather than adding to it. */
 	clearConsole() {
-		this.record('consoleReset', 0, 0, this.console)
+		this.record(KIND_CONSOLE_RESET, 0, 0, this.console)
 		this.console = ''
 	}
 
@@ -1323,7 +1378,7 @@ export class MipsSimulator {
 
 	/** The memory-mapped display's text; a form feed clears it rather than adding. */
 	writeDisplayOutput(text: string) {
-		this.record('display', 0, 0, this.keyboardDisplay.displayOutput)
+		this.record(KIND_DISPLAY, 0, 0, this.keyboardDisplay.displayOutput)
 		this.keyboardDisplay.displayOutput = text
 	}
 
@@ -1361,24 +1416,24 @@ export class MipsSimulator {
 	/** Where the next syscall 9 allocation starts. */
 	/** Ends the run; a step back has to be able to bring it out of that. */
 	halt() {
-		this.record('halted', 0, this.halted ? 1 : 0)
+		this.record(KIND_HALTED, 0, this.halted ? 1 : 0)
 		this.halted = true
 	}
 
 	/** Syscall 17 exits with a status; `null` means the program never exited. */
 	setExitCode(code: number | null) {
-		this.record('exitCode', this.exitCode === null ? 0 : 1, this.exitCode ?? 0)
+		this.record(KIND_EXIT_CODE, this.exitCode === null ? 0 : 1, this.exitCode ?? 0)
 		this.exitCode = code
 	}
 
 	/** How long the run pauses for syscall 32, or a MIDI note's duration. */
 	setPendingSleep(milliseconds: number) {
-		this.record('sleep', 0, this.pendingSleepMs)
+		this.record(KIND_SLEEP, 0, this.pendingSleepMs)
 		this.pendingSleepMs = milliseconds
 	}
 
 	writeHeapPointer(address: number) {
-		this.record('heapPointer', 0, this.heapPointer)
+		this.record(KIND_HEAP_POINTER, 0, this.heapPointer)
 		this.heapPointer = address
 	}
 
@@ -1447,109 +1502,109 @@ export class MipsSimulator {
 		try {
 			switch (op) {
 				// Arithmetic
-				case 'ADD':
+				case ADD:
 					this.writeReg(rd, this.checkedSum(this.readReg(rs), this.readReg(rt)))
 					return
-				case 'ADDU':
+				case ADDU:
 					this.writeReg(rd, (this.readReg(rs) + this.readReg(rt)) | 0)
 					return
-				case 'SUB':
+				case SUB:
 					this.writeReg(rd, this.checkedDifference(this.readReg(rs), this.readReg(rt)))
 					return
-				case 'SUBU':
+				case SUBU:
 					this.writeReg(rd, (this.readReg(rs) - this.readReg(rt)) | 0)
 					return
-				case 'ADDI':
+				case ADDI:
 					this.writeReg(rt, this.checkedSum(this.readReg(rs), imm))
 					return
-				case 'ADDIU':
+				case ADDIU:
 					this.writeReg(rt, (this.readReg(rs) + imm) | 0)
 					return
-				case 'MUL':
+				case MUL:
 					this.writeReg(rd, Math.imul(this.readReg(rs), this.readReg(rt)))
 					return
 
 				// Logical
-				case 'AND':
+				case AND:
 					this.writeReg(rd, this.readReg(rs) & this.readReg(rt))
 					return
-				case 'OR':
+				case OR:
 					this.writeReg(rd, this.readReg(rs) | this.readReg(rt))
 					return
-				case 'XOR':
+				case XOR:
 					this.writeReg(rd, this.readReg(rs) ^ this.readReg(rt))
 					return
-				case 'NOR':
+				case NOR:
 					this.writeReg(rd, ~(this.readReg(rs) | this.readReg(rt)))
 					return
-				case 'ANDI':
+				case ANDI:
 					this.writeReg(rt, this.readReg(rs) & uimm)
 					return
-				case 'ORI':
+				case ORI:
 					this.writeReg(rt, this.readReg(rs) | uimm)
 					return
-				case 'XORI':
+				case XORI:
 					this.writeReg(rt, this.readReg(rs) ^ uimm)
 					return
 
 				// Shifts
-				case 'SLL':
+				case SLL:
 					this.writeReg(rd, this.readReg(rt) << shamt)
 					return
-				case 'SRL':
+				case SRL:
 					this.writeReg(rd, this.readReg(rt) >>> shamt)
 					return
-				case 'SRA':
+				case SRA:
 					this.writeReg(rd, this.readReg(rt) >> shamt)
 					return
-				case 'SLLV':
+				case SLLV:
 					this.writeReg(rd, this.readReg(rt) << (this.readReg(rs) & 31))
 					return
-				case 'SRLV':
+				case SRLV:
 					this.writeReg(rd, this.readReg(rt) >>> (this.readReg(rs) & 31))
 					return
-				case 'SRAV':
+				case SRAV:
 					this.writeReg(rd, this.readReg(rt) >> (this.readReg(rs) & 31))
 					return
 
 				// Comparison
-				case 'SLT':
+				case SLT:
 					this.writeReg(rd, this.readReg(rs) < this.readReg(rt) ? 1 : 0)
 					return
-				case 'SLTU':
+				case SLTU:
 					this.writeReg(rd, (this.readReg(rs) >>> 0) < (this.readReg(rt) >>> 0) ? 1 : 0)
 					return
-				case 'SLTI':
+				case SLTI:
 					this.writeReg(rt, this.readReg(rs) < imm ? 1 : 0)
 					return
-				case 'SLTIU':
+				case SLTIU:
 					// The immediate is sign-extended, then compared as unsigned.
 					this.writeReg(rt, (this.readReg(rs) >>> 0) < (imm >>> 0) ? 1 : 0)
 					return
 
 				// Multiply and divide
-				case 'MULT': {
+				case MULT: {
 					const product = BigInt(this.readReg(rs)) * BigInt(this.readReg(rt))
 					this.setHiLo(Number(BigInt.asIntN(32, product >> 32n)), Number(BigInt.asIntN(32, product)))
 					return
 				}
-				case 'MULTU': {
+				case MULTU: {
 					const product = BigInt(this.readReg(rs) >>> 0) * BigInt(this.readReg(rt) >>> 0)
 					this.setHiLo(Number(BigInt.asIntN(32, product >> 32n)), Number(BigInt.asIntN(32, product)))
 					return
 				}
 				// Multiply-accumulate: the 64-bit HI/LO pair moves by the product
 				//.
-				case 'MADD':
-				case 'MADDU':
-				case 'MSUB':
-				case 'MSUBU': {
-					const unsigned = op === 'MADDU' || op === 'MSUBU'
+				case MADD:
+				case MADDU:
+				case MSUB:
+				case MSUBU: {
+					const unsigned = op === MADDU || op === MSUBU
 					const left = BigInt(unsigned ? this.readReg(rs) >>> 0 : this.readReg(rs))
 					const right = BigInt(unsigned ? this.readReg(rt) >>> 0 : this.readReg(rt))
 					const product = left * right
 					const accumulator = (BigInt(this.hi) << 32n) | BigInt(this.lo >>> 0)
-					const result = BigInt.asIntN(64, op === 'MSUB' || op === 'MSUBU'
+					const result = BigInt.asIntN(64, op === MSUB || op === MSUBU
 						? accumulator - product
 						: accumulator + product)
 					this.setHiLo(Number(BigInt.asIntN(32, result >> 32n)), Number(BigInt.asIntN(32, result)))
@@ -1559,9 +1614,9 @@ export class MipsSimulator {
 				// Counting leading bits.  MARS codes `rt` as zero rather than
 				// repeating `rd`, so the word differs from real MIPS32
 				//.
-				case 'CLO':
-				case 'CLZ': {
-					const wanted = op === 'CLO' ? 1 : 0
+				case CLO:
+				case CLZ: {
+					const wanted = op === CLO ? 1 : 0
 					const value = this.readReg(rs)
 					let count = 0
 					while (count < 32 && ((value >>> (31 - count)) & 1) === wanted) count++
@@ -1569,7 +1624,7 @@ export class MipsSimulator {
 					return
 				}
 
-				case 'DIV': {
+				case DIV: {
 					const dividend = this.readReg(rs)
 					const divisor = this.readReg(rt)
 					// Deliberate: MIPS32 raises nothing on a zero divisor and leaves
@@ -1579,68 +1634,68 @@ export class MipsSimulator {
 					this.setHiLo(dividend % divisor, dividend / divisor)
 					return
 				}
-				case 'DIVU': {
+				case DIVU: {
 					const dividend = this.readReg(rs) >>> 0
 					const divisor = this.readReg(rt) >>> 0
 					if (divisor === 0) return
 					this.setHiLo(dividend % divisor, Math.floor(dividend / divisor))
 					return
 				}
-				case 'MFHI':
+				case MFHI:
 					this.writeReg(rd, this.hi)
 					return
-				case 'MFLO':
+				case MFLO:
 					this.writeReg(rd, this.lo)
 					return
-				case 'MTHI':
+				case MTHI:
 					this.setHiLo(this.readReg(rs), this.lo)
 					return
-				case 'MTLO':
+				case MTLO:
 					this.setHiLo(this.hi, this.readReg(rs))
 					return
 
 				// Load and store
-				case 'LW':
+				case LW:
 					this.writeReg(rt, this.readMemory(this.effectiveAddress(rs, imm), 4))
 					return
-				case 'LH':
+				case LH:
 					this.writeReg(rt, (this.readMemory(this.effectiveAddress(rs, imm), 2) << 16) >> 16)
 					return
-				case 'LHU':
+				case LHU:
 					this.writeReg(rt, this.readMemory(this.effectiveAddress(rs, imm), 2))
 					return
-				case 'LB':
+				case LB:
 					this.writeReg(rt, (this.readMemory(this.effectiveAddress(rs, imm), 1) << 24) >> 24)
 					return
-				case 'LBU':
+				case LBU:
 					this.writeReg(rt, this.readMemory(this.effectiveAddress(rs, imm), 1))
 					return
-				case 'SW':
+				case SW:
 					this.writeMemory(this.effectiveAddress(rs, imm), this.readReg(rt), 4)
 					return
-				case 'SH':
+				case SH:
 					this.writeMemory(this.effectiveAddress(rs, imm), this.readReg(rt), 2)
 					return
-				case 'SB':
+				case SB:
 					this.writeMemory(this.effectiveAddress(rs, imm), this.readReg(rt), 1)
 					return
 
 				// One processor is simulated, so the store always succeeds and
 				// `ll`/`sc` are `lw`/`sw` with a success code.
-				case 'LL':
+				case LL:
 					this.writeReg(rt, this.readMemory(this.effectiveAddress(rs, imm), 4))
 					return
-				case 'SC':
+				case SC:
 					this.writeMemory(this.effectiveAddress(rs, imm), this.readReg(rt), 4)
 					this.writeReg(rt, 1)
 					return
 
 				// Unaligned word transfers.  Each moves the bytes between the
 				// effective address and the near end of its word.
-				case 'LWL':
-				case 'LWR': {
+				case LWL:
+				case LWR: {
 					const address = this.effectiveAddress(rs, imm)
-					const towardsLow = op === 'LWL'
+					const towardsLow = op === LWL
 					let result = this.readReg(rt)
 					for (let i = 0; i <= (towardsLow ? address & 3 : 3 - (address & 3)); i++) {
 						const byte = this.readMemory(towardsLow ? address - i : address + i, 1)
@@ -1650,10 +1705,10 @@ export class MipsSimulator {
 					this.writeReg(rt, result | 0)
 					return
 				}
-				case 'SWL':
-				case 'SWR': {
+				case SWL:
+				case SWR: {
 					const address = this.effectiveAddress(rs, imm)
-					const towardsLow = op === 'SWL'
+					const towardsLow = op === SWL
 					const source = this.readReg(rt) >>> 0
 					for (let i = 0; i <= (towardsLow ? address & 3 : 3 - (address & 3)); i++) {
 						const shift = (towardsLow ? 3 - i : i) * 8
@@ -1661,102 +1716,102 @@ export class MipsSimulator {
 					}
 					return
 				}
-				case 'LUI':
+				case LUI:
 					this.writeReg(rt, uimm << 16)
 					return
 
 				// Branches
-				case 'BEQ':
+				case BEQ:
 					this.conditionalBranch(this.readReg(rs) === this.readReg(rt), imm)
 					return
-				case 'BNE':
+				case BNE:
 					this.conditionalBranch(this.readReg(rs) !== this.readReg(rt), imm)
 					return
-				case 'BGEZ':
+				case BGEZ:
 					this.conditionalBranch(this.readReg(rs) >= 0, imm)
 					return
-				case 'BGTZ':
+				case BGTZ:
 					this.conditionalBranch(this.readReg(rs) > 0, imm)
 					return
-				case 'BLEZ':
+				case BLEZ:
 					this.conditionalBranch(this.readReg(rs) <= 0, imm)
 					return
-				case 'BLTZ':
+				case BLTZ:
 					this.conditionalBranch(this.readReg(rs) < 0, imm)
 					return
 
 				// Branch and link.  MARS links only on the taken path
 				//, and the link skips the delay
 				// slot exactly as a call does (`:3309-3313`).
-				case 'BGEZAL':
-				case 'BLTZAL': {
-					const taken = op === 'BGEZAL' ? this.readReg(rs) >= 0 : this.readReg(rs) < 0
+				case BGEZAL:
+				case BLTZAL: {
+					const taken = op === BGEZAL ? this.readReg(rs) >= 0 : this.readReg(rs) < 0
 					if (taken) this.writeReg(31, (this.pc + (this.delayedBranching ? 8 : 4)) | 0)
 					this.conditionalBranch(taken, imm)
 					return
 				}
 
 				// Jumps
-				case 'J':
+				case J:
 					this.transferTo(this.jumpTarget(decoded.index))
 					return
-				case 'JAL':
+				case JAL:
 					this.enterCall(31, this.jumpTarget(decoded.index))
 					return
-				case 'JALR':
+				case JALR:
 					this.enterCall(rd, this.readReg(rs) >>> 0)
 					return
-				case 'JR': {
+				case JR: {
 					const target = this.readReg(rs) >>> 0
 					this.leaveCall(target)
 					this.transferTo(target)
 					return
 				}
 
-				case 'SYSCALL':
+				case SYSCALL:
 					this.handleSyscall()
 					return
 
 				// A `.ktext` handler takes `break`; without one it stops the program.
-				case 'BREAK': {
+				case BREAK: {
 					const code = decoded.index >>> 6
 					this.signalException(EXCEPTION_BREAKPOINT)
 					throw new Error(code ? `break instruction executed; code = ${code}.` : 'break instruction executed; no code given.')
 				}
 
 				// Coprocessor 0
-				case 'MFC0':
+				case MFC0:
 					this.writeReg(rt, this.cp0Registers[rd] | 0)
 					return
-				case 'MTC0':
+				case MTC0:
 					this.writeCp0(rd, this.readReg(rt))
 					return
-				case 'ERET':
+				case ERET:
 					this.writeCp0(12, this.cp0Registers[12] & ~CP0_STATUS_EXL)
 					this.nextPc = this.cp0Registers[14] >>> 0
 					return
 
 				// Coprocessor 1 moves, loads, stores, and branches
-				case 'MFC1':
+				case MFC1:
 					this.writeReg(rt, this.fpRegisters[decoded.fs] | 0)
 					return
-				case 'MTC1':
+				case MTC1:
 					this.writeFpWord(decoded.fs, this.readReg(rt))
 					return
-				case 'LWC1':
+				case LWC1:
 					this.writeFpWord(decoded.ft, this.readMemory(this.effectiveAddress(rs, imm), 4))
 					return
-				case 'SWC1':
+				case SWC1:
 					this.writeMemory(this.effectiveAddress(rs, imm), this.fpRegisters[decoded.ft], 4)
 					return
-				case 'LDC1': {
+				case LDC1: {
 					const index = this.evenRegister(decoded.ft)
 					const address = this.effectiveAddress(rs, imm)
 					this.writeFpWord(index, this.readMemory(address, 4))
 					this.writeFpWord(index + 1, this.readMemory(address + 4, 4))
 					return
 				}
-				case 'SDC1': {
+				case SDC1: {
 					const index = this.evenRegister(decoded.ft)
 					const address = this.effectiveAddress(rs, imm)
 					this.writeMemory(address, this.fpRegisters[index], 4)
@@ -1765,20 +1820,20 @@ export class MipsSimulator {
 				}
 				// The branch and the moves name their own condition flag, 0-7
 				//.
-				case 'BC1T':
-				case 'BC1F':
-					this.conditionalBranch(this.fpConditionFlags[decoded.cc] === (op === 'BC1T'), imm)
+				case BC1T:
+				case BC1F:
+					this.conditionalBranch(this.fpConditionFlags[decoded.cc] === (op === BC1T), imm)
 					return
-				case 'MOVT':
-				case 'MOVF':
-					if (this.fpConditionFlags[decoded.cc] === (op === 'MOVT')) this.writeReg(rd, this.readReg(rs))
+				case MOVT:
+				case MOVF:
+					if (this.fpConditionFlags[decoded.cc] === (op === MOVT)) this.writeReg(rd, this.readReg(rs))
 					return
 
 				// Conditional moves on a register.
-				case 'MOVN':
+				case MOVN:
 					if (this.readReg(rt) !== 0) this.writeReg(rd, this.readReg(rs))
 					return
-				case 'MOVZ':
+				case MOVZ:
 					if (this.readReg(rt) === 0) this.writeReg(rd, this.readReg(rs))
 					return
 
@@ -1786,7 +1841,7 @@ export class MipsSimulator {
 					if (this.executeTrap(decoded)) return
 					if (this.executeFpOperation(decoded)) return
 					this.signalException(EXCEPTION_RESERVED_INSTRUCTION)
-					throw new Error(`Unsupported instruction: ${op}`)
+					throw new Error(`Unsupported instruction: ${OP_NAMES[op] ?? op}`)
 			}
 		} catch (error) {
 			if (error instanceof ExceptionAbort) throw error
@@ -1804,7 +1859,7 @@ export class MipsSimulator {
 		const returnAddress = (this.pc + (this.delayedBranching ? 8 : 4)) | 0
 		this.writeReg(linkRegister, returnAddress)
 		const frame = { callAddress: this.pc, returnAddress, targetAddress: target }
-		this.record('call', 0, 0, frame)
+		this.record(KIND_CALL, 0, 0, frame)
 		this.callStack.push(frame)
 		this.transferTo(target)
 	}
@@ -1813,7 +1868,7 @@ export class MipsSimulator {
 	leaveCall(target: number) {
 		const frame = this.callStack[this.callStack.length - 1]
 		if (frame?.returnAddress !== target) return
-		this.record('call', 0, 0, frame)
+		this.record(KIND_CALL, 0, 0, frame)
 		this.callStack.pop()
 	}
 
@@ -1827,7 +1882,7 @@ export class MipsSimulator {
 	 * takes it and a program without one stops.
 	 */
 	executeTrap(decoded: Decoded): boolean {
-		const form = TRAP_FORMS[decoded.op]
+		const form = OP_TRAP_FORMS[decoded.op]
 		if (!form) return false
 		const right = form.immediate ? decoded.imm : this.readReg(decoded.rt)
 		if (form.holds(this.readReg(decoded.rs), right)) {
@@ -1839,33 +1894,33 @@ export class MipsSimulator {
 
 	/** Executes the dotted CP1 mnemonics; returns false for anything else. */
 	executeFpOperation(decoded: Decoded): boolean {
-		const parts = decoded.op.split('.')
+		const asked = FP_FORMS[decoded.op]
+		if (asked === undefined) return false
 		const { ft, fs, fd } = decoded
-		if (parts.length === 2 && FP_CONDITIONAL_MOVES.has(parts[0])) {
-			return this.executeFpConditionalMove(parts[0], parts[1], decoded)
+		switch (asked.form) {
+			case 'conditionalMove': return this.executeFpConditionalMove(asked.operation, asked.format, decoded)
+			case 'arithmetic': return this.executeFpArithmetic(asked.operation, asked.format, fd, fs, ft)
+			case 'compare': return this.executeFpCompare(asked.comparison, asked.format, fs, ft, decoded.cc)
+			case 'convert': return this.executeFpConvert(asked.target, asked.source, fd, fs)
+			case 'round': return this.executeFpRound(asked.operation, asked.format, fd, fs)
 		}
-		if (parts.length === 2) return this.executeFpArithmetic(parts[0], parts[1], fd, fs, ft)
-		if (parts.length === 3 && parts[0] === 'C') return this.executeFpCompare(parts[1], parts[2], fs, ft, decoded.cc)
-		if (parts.length === 3 && parts[0] === 'CVT') return this.executeFpConvert(parts[1], parts[2], fd, fs)
-		if (parts.length === 3 && parts[1] === 'W') return this.executeFpRound(parts[0], parts[2], fd, fs)
-		return false
 	}
 
 	executeFpArithmetic(operation: string, format: string, fd: number, fs: number, ft: number): boolean {
-		if (format !== 'S' && format !== 'D') return false
-		const double = format === 'D'
+		if (format !== 's' && format !== 'd') return false
+		const double = format === 'd'
 		const read = (index: number) => double ? this.readFpDouble(index) : this.readFpSingle(index)
 		const write = (index: number, value: number) => double ? this.writeFpDouble(index, value) : this.writeFpSingle(index, value)
 
 		switch (operation) {
-			case 'ADD': write(fd, read(fs) + read(ft)); return true
-			case 'SUB': write(fd, read(fs) - read(ft)); return true
-			case 'MUL': write(fd, read(fs) * read(ft)); return true
-			case 'DIV': write(fd, read(fs) / read(ft)); return true
-			case 'SQRT': write(fd, Math.sqrt(read(fs))); return true
-			case 'ABS': write(fd, Math.abs(read(fs))); return true
-			case 'NEG': write(fd, -read(fs)); return true
-			case 'MOV': {
+			case 'add': write(fd, read(fs) + read(ft)); return true
+			case 'sub': write(fd, read(fs) - read(ft)); return true
+			case 'mul': write(fd, read(fs) * read(ft)); return true
+			case 'div': write(fd, read(fs) / read(ft)); return true
+			case 'sqrt': write(fd, Math.sqrt(read(fs))); return true
+			case 'abs': write(fd, Math.abs(read(fs))); return true
+			case 'neg': write(fd, -read(fs)); return true
+			case 'mov': {
 				// A raw copy keeps NaN payloads and signed zeroes intact.
 				const target = double ? this.evenRegister(fd) : fd
 				const source = double ? this.evenRegister(fs) : fs
@@ -1882,14 +1937,14 @@ export class MipsSimulator {
 	 * NaN payloads survive, and the even-register check runs before the condition.
 	 */
 	executeFpConditionalMove(operation: string, format: string, decoded: Decoded): boolean {
-		if (format !== 'S' && format !== 'D') return false
-		const double = format === 'D'
+		if (format !== 's' && format !== 'd') return false
+		const double = format === 'd'
 		const target = double ? this.evenRegister(decoded.fd) : decoded.fd
 		const source = double ? this.evenRegister(decoded.fs) : decoded.fs
 
-		const moves = operation === 'MOVN' ? this.readReg(decoded.rt) !== 0
-			: operation === 'MOVZ' ? this.readReg(decoded.rt) === 0
-				: this.fpConditionFlags[decoded.cc] === (operation === 'MOVT')
+		const moves = operation === 'movn' ? this.readReg(decoded.rt) !== 0
+			: operation === 'movz' ? this.readReg(decoded.rt) === 0
+				: this.fpConditionFlags[decoded.cc] === (operation === 'movt')
 		if (!moves) return true
 
 		this.writeFpWord(target, this.fpRegisters[source])
@@ -1902,9 +1957,9 @@ export class MipsSimulator {
 		const other = this.readFpFormatted(format, ft)
 		if (value === null || other === null) return false
 
-		const result = comparison === 'EQ' ? value === other
-			: comparison === 'LT' ? value < other
-				: comparison === 'LE' ? value <= other
+		const result = comparison === 'eq' ? value === other
+			: comparison === 'lt' ? value < other
+				: comparison === 'le' ? value <= other
 					: null
 		if (result === null) return false
 		this.writeFpFlag(cc, result)
@@ -1915,9 +1970,9 @@ export class MipsSimulator {
 		const value = this.readFpFormatted(source, fs)
 		if (value === null) return false
 
-		if (target === 'S') this.writeFpSingle(fd, value)
-		else if (target === 'D') this.writeFpDouble(fd, value)
-		else if (target === 'W') this.writeFpWord(fd, roundToNearestEven(value))
+		if (target === 's') this.writeFpSingle(fd, value)
+		else if (target === 'd') this.writeFpDouble(fd, value)
+		else if (target === 'w') this.writeFpWord(fd, roundToNearestEven(value))
 		else return false
 		return true
 	}
@@ -1926,10 +1981,10 @@ export class MipsSimulator {
 		const value = this.readFpFormatted(format, fs)
 		if (value === null) return false
 
-		const rounded = operation === 'ROUND' ? roundToNearestEven(value)
-			: operation === 'TRUNC' ? Math.trunc(value)
-				: operation === 'CEIL' ? Math.ceil(value)
-					: operation === 'FLOOR' ? Math.floor(value)
+		const rounded = operation === 'round' ? roundToNearestEven(value)
+			: operation === 'trunc' ? Math.trunc(value)
+				: operation === 'ceil' ? Math.ceil(value)
+					: operation === 'floor' ? Math.floor(value)
 						: null
 		if (rounded === null) return false
 		this.writeFpWord(fd, rounded)
@@ -1938,9 +1993,9 @@ export class MipsSimulator {
 
 	/** Reads one CP1 operand in the given format, or null for an unknown format. */
 	readFpFormatted(format: string, index: number): number | null {
-		if (format === 'S') return this.readFpSingle(index)
-		if (format === 'D') return this.readFpDouble(index)
-		if (format === 'W') return this.readFpWord(index)
+		if (format === 's') return this.readFpSingle(index)
+		if (format === 'd') return this.readFpDouble(index)
+		if (format === 'w') return this.readFpWord(index)
 		return null
 	}
 
@@ -1955,13 +2010,13 @@ export class MipsSimulator {
 	}
 
 	writeFpWord(index: number, value: number) {
-		this.record('fp', index, this.fpRegisters[index])
+		this.record(KIND_FP, index, this.fpRegisters[index])
 		this.fpRegisters[index] = value >>> 0
 	}
 
 	/** Every CP1 condition-code write ends here. */
 	writeFpFlag(index: number, value: boolean) {
-		this.record('flag', index, this.fpConditionFlags[index] ? 1 : 0)
+		this.record(KIND_FLAG, index, this.fpConditionFlags[index] ? 1 : 0)
 		this.fpConditionFlags[index] = value
 	}
 
@@ -2234,7 +2289,7 @@ export class MipsSimulator {
 
 		// Kept so the panel can show what was answered; the registers and memory
 		// it lands in are effects of their own.
-		this.record('input', 0, 0, cancelled ? '' : input)
+		this.record(KIND_INPUT, 0, 0, cancelled ? '' : input)
 		this.completeInput(request, input, cancelled)
 
 		this.pendingInput = null
@@ -2425,7 +2480,7 @@ export class MipsSimulator {
 			// Reading this register consumes the character, so the read is a write
 			// as far as the log is concerned.
 			if (character) {
-				this.record('queuedInput', 0, 0, this.keyboardDisplay.queuedInput)
+				this.record(KIND_QUEUED_INPUT, 0, 0, this.keyboardDisplay.queuedInput)
 				this.keyboardDisplay.queuedInput = this.keyboardDisplay.queuedInput.slice(1)
 			}
 			return character
@@ -2494,12 +2549,7 @@ export class MipsSimulator {
 		this.keyboardDisplay.queuedInput += input
 	}
 
-	getMemoryView() {
-		const view: Record<string, number> = {}
-		const words = [...this.memory.entries()].sort(([a], [b]) => a - b)
-		for (const [wordAddress, value] of words) {
-			view[memoryKey(wordAddress * 4)] = value
-		}
-		return view
+	getMemoryView(): MemoryView {
+		return { words: this.memory }
 	}
 }

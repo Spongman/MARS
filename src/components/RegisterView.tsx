@@ -8,6 +8,9 @@ import FloatBitsView from './FloatBitsView'
 import HexNumber from './HexNumber'
 import EditableCell from './EditableCell'
 import { parseEditedDouble, parseEditedValue } from './editValue'
+import { flashClass, useChangedEntries, useFlash } from './highlight'
+import { MEMORY_CONFIGURATIONS, isMappedAddress } from '../core/settings'
+import { useTHRAXStore } from '../store/thraxStore'
 import { isOneOf, useStoredState } from '../hooks/useStoredState'
 
 interface RegisterViewProps extends CoprocessorState {
@@ -18,9 +21,32 @@ interface RegisterViewProps extends CoprocessorState {
 	 */
 	onEdit?: (entry: RegisterEntry, bits: number, high?: number) => boolean
 	editable?: boolean
+	/**
+	 * A register another panel has sent the eye to.  The request counter is what
+	 * makes it a navigation rather than a name, so asking twice lights it twice.
+	 */
+	focused?: { name: string, request: number } | null
+	/**
+	 * The address under the pointer anywhere in the workspace.  A register
+	 * holding it lights, which is how a pointer is found without reading the file.
+	 */
+	hoveredAddress?: number | null
+	/** Names the value under the pointer here as an address for the other panels. */
+	onHoverAddress?: (address: number | null) => void
+	/** The register under the pointer, wherever it is being pointed at. */
+	hoveredRegister?: string | null
+	/** Names the register under the pointer here, so the history can light it. */
+	onHoverRegister?: (name: string | null) => void
 }
 
 type RegisterTab = 'registers' | 'coproc1' | 'coproc0'
+
+/** Which tab a register is on, so a navigation can open the right one. */
+export function tabForRegister(name: string): RegisterTab {
+	if (/^\$f\d+$/.test(name)) return 'coproc1'
+	if (CP0_REGISTERS.some((register) => register.name === name)) return 'coproc0'
+	return 'registers'
+}
 
 type Format = '0n' | '0x' | 'f' | 'd'
 
@@ -109,6 +135,10 @@ const INITIAL_PANEL_FORMATS: Record<string, FormatFlags> = {
 	[SYSTEM_CONTROL]: flagsFrom(['0x']),
 }
 
+/** Brings a navigated register into view, since it is rarely already on screen. */
+const scrollIntoView = (element: HTMLDivElement | null) =>
+	element?.scrollIntoView({ block: 'nearest' })
+
 interface RegisterEntry {
 	name: string
 	bits: number
@@ -125,7 +155,7 @@ const formatBits = (format: Format, entry: RegisterEntry) => {
 	}
 }
 
-function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect, onEdit, editable = false }: {
+function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect, onEdit, editable = false, flashed, changed, pointed, onHoverAddress, pointedRegister, onHoverRegister, isAddress }: {
 	title: string
 	entries: RegisterEntry[]
 	flags: FormatFlags
@@ -135,6 +165,18 @@ function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect, on
 	onSelect?: (name: string) => void
 	onEdit?: (entry: RegisterEntry, bits: number, high?: number) => boolean
 	editable?: boolean
+	/** The register a navigation has just landed on, lit until it fades. */
+	flashed?: string | null
+	/** Registers whose value the last step moved, lit in the other colour. */
+	changed?: ReadonlySet<string>
+	/** The address under the pointer; a register holding it lights. */
+	pointed?: number | null
+	onHoverAddress?: (address: number | null) => void
+	/** The register under the pointer, named rather than valued. */
+	pointedRegister?: string | null
+	onHoverRegister?: (name: string | null) => void
+	/** Whether a value is an address, so only real ones name one. */
+	isAddress: (value: number) => boolean
 }) {
 	const available = formatsFor(title)
 	const formats = activeFormats(title, flags)
@@ -165,8 +207,35 @@ function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect, on
 				{entries.map((entry) => (
 					<div
 						key={entry.name}
-						className={`register-item${onSelect ? ' register-item-selectable' : ''}${entry.name === selected ? ' selected' : ''}`}
+						ref={entry.name === flashed ? scrollIntoView : undefined}
+						className={[
+							'register-item',
+							onSelect ? 'register-item-selectable' : '',
+							entry.name === selected ? 'selected' : '',
+							// Navigation wins where both apply: the click that put the eye
+							// here is the more recent thing, and one colour reads better.
+							entry.name === flashed ? flashClass('navigation') : changed?.has(entry.name) ? flashClass('change') : '',
+							// A register holding the hovered address is where that address
+							// appears in this window, so it lights like the word does.
+							// Unsigned on both sides: a register holds a signed word, and the
+							// address a panel points at is unsigned, so anything at or above
+							// 0x80000000 would never match itself.
+							pointed !== null && pointed !== undefined && (entry.bits >>> 0) === pointed && isAddress(entry.bits) ? 'address-hovered' : '',
+							// Named from another window: the history points at a register
+							// by name, since the value it shows is the one from back then.
+							entry.name === pointedRegister ? 'register-hovered' : '',
+						].filter(Boolean).join(' ')}
 						style={{ gridTemplateColumns: `minmax(${nameWidth}px, auto) repeat(${formats.length}, 1fr)` }}
+						onMouseEnter={() => {
+							// Only a value that is actually an address names one; otherwise
+							// every register holding the same small number lights with it.
+							onHoverAddress?.(isAddress(entry.bits) ? entry.bits >>> 0 : null)
+							onHoverRegister?.(entry.name)
+						}}
+						onMouseLeave={() => {
+							onHoverAddress?.(null)
+							onHoverRegister?.(null)
+						}}
 						onClick={onSelect && (() => onSelect(entry.name))}
 						role={onSelect && 'button'}
 						tabIndex={onSelect && 0}
@@ -211,7 +280,7 @@ function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect, on
 	)
 }
 
-function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers, onEdit, editable = false }: RegisterViewProps) {
+function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers, onEdit, editable = false, focused = null, hoveredAddress = null, onHoverAddress, hoveredRegister = null, onHoverRegister }: RegisterViewProps) {
 	const [tab, setTab] = useStoredState<RegisterTab>('registers.tab', 'registers', isOneOf(TABS.map((item) => item.id)))
 	const [panelFormats, setPanelFormats] = useStoredState('registers.formats', INITIAL_PANEL_FORMATS, isPanelFormats)
 	/** Index of the CP1 register whose IEEE-754 fields are shown, if any. */
@@ -220,6 +289,31 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers, 
 	// A double is read from a register pair, so a selected odd register belongs
 	// to the pair before it once the file is being read that way.
 	const selectedFp = selectedRegister === null ? null : fpDouble ? selectedRegister & ~1 : selectedRegister
+
+	// Every value on show, by name, so the ones that moved can be lit wherever
+	// they are: the integer file, the FPU file and the CP0 registers together.
+	const named = React.useMemo(() => [
+		...Object.entries(registers).map(([name, bits]) => [name, bits | 0] as const),
+		...fpRegisters.map((bits, index) => [`$f${index}`, bits] as const),
+		...CP0_REGISTERS.map((register) => [register.name, cp0Registers[register.index] ?? 0] as const),
+	], [cp0Registers, fpRegisters, registers])
+	const changed = useChangedEntries(named)
+
+	// A register holds a number; only some of those numbers are addresses, and
+	// only those are worth lighting across the workspace.
+	const memoryConfiguration = useTHRAXStore((state) => state.settings.memoryConfiguration)
+	const isAddress = React.useCallback(
+		(value: number) => isMappedAddress(value, MEMORY_CONFIGURATIONS[memoryConfiguration]),
+		[memoryConfiguration],
+	)
+
+	// A navigation names a register on any of the three tabs, so it opens the one
+	// the register is on before the panel tries to light it.
+	const flashing = useFlash('navigation', focused?.request ?? null)
+	const flashed = flashing ? focused?.name ?? null : null
+	React.useEffect(() => {
+		if (focused) setTab(tabForRegister(focused.name))
+	}, [focused, setTab])
 
 	const handleToggle = React.useCallback((panel: string, format: Format, event: React.MouseEvent) => {
 		setPanelFormats((current) => {
@@ -260,6 +354,13 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers, 
 					title={group}
 					flags={panelFormats[group]}
 					onToggle={handleToggle}
+					flashed={flashed}
+					changed={changed}
+					pointed={hoveredAddress}
+					onHoverAddress={onHoverAddress}
+					pointedRegister={hoveredRegister}
+					onHoverRegister={onHoverRegister}
+					isAddress={isAddress}
 					onEdit={onEdit}
 					editable={editable}
 					entries={names.map((name, index) => ({
@@ -288,6 +389,13 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers, 
 						title={FLOATING_POINT}
 						flags={panelFormats[FLOATING_POINT]}
 						onToggle={handleToggle}
+					flashed={flashed}
+					changed={changed}
+					pointed={hoveredAddress}
+					onHoverAddress={onHoverAddress}
+					pointedRegister={hoveredRegister}
+					onHoverRegister={onHoverRegister}
+					isAddress={isAddress}
 						onEdit={onEdit}
 						editable={editable}
 						selected={selectedFp === null ? undefined : `$f${selectedFp}`}
@@ -324,6 +432,13 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers, 
 					title={SYSTEM_CONTROL}
 					flags={panelFormats[SYSTEM_CONTROL]}
 					onToggle={handleToggle}
+					flashed={flashed}
+					changed={changed}
+					pointed={hoveredAddress}
+					onHoverAddress={onHoverAddress}
+					pointedRegister={hoveredRegister}
+					onHoverRegister={onHoverRegister}
+					isAddress={isAddress}
 					onEdit={onEdit}
 					editable={editable}
 					entries={CP0_REGISTERS.map(({ index, name }) => ({ name, bits: cp0Registers[index] || 0 }))}

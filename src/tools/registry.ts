@@ -72,6 +72,8 @@ interface ToolState {
 	/** Version the held snapshot was taken at, or -1 for none yet. */
 	viewedVersion: number
 	view: unknown
+	/** Whether this tool is in the simulator's observer list right now. */
+	attached: boolean
 }
 
 /**
@@ -80,7 +82,7 @@ interface ToolState {
  * for events it does not care about.
  */
 function watch(entry: ToolEntry): ToolState {
-	const state: ToolState = { entry, observer: {}, version: 0, viewedVersion: -1, view: undefined }
+	const state: ToolState = { entry, observer: {}, version: 0, viewedVersion: -1, view: undefined, attached: false }
 	const tool = entry.tool as unknown as Record<string, Callback | undefined>
 	const observer = state.observer as unknown as Record<string, Callback>
 	for (const name of CALLBACKS) {
@@ -96,22 +98,71 @@ function watch(entry: ToolEntry): ToolState {
 
 export class ToolRegistry<E extends Entries> {
 	private readonly states: ToolState[]
+	/** The run the wanted tools watch, and the machine it is on. */
+	private simulator: { observers: ExecutionObserver[] } | null = null
+	private machine: MachineConfig | null = null
+	/** Tools something is asking for; the rest cost nothing because they do not run. */
+	private wanted: ReadonlySet<string> = new Set()
 
 	constructor(entries: E) {
 		this.states = entries.map(watch)
 	}
 
 	/**
-	 * Points every tool at a fresh run of `machine`, from clean readings.  The
-	 * reset and the machine both go out through the observer interface, which is
-	 * the only thing the simulator itself would use.
+	 * Points the wanted tools at a fresh run of `machine`, from clean readings.
+	 * The reset and the machine both go out through the observer interface, which
+	 * is the only thing the simulator itself would use.
+	 *
+	 * A tool nobody is asking for is left off the run entirely.  Watching costs
+	 * an observer call per instruction and, for the ones that model a pipeline or
+	 * count every address, a great deal more: the whole set attached made a run
+	 * twenty-five times slower whether or not a single panel was open.
 	 */
 	attach(simulator: { observers: ExecutionObserver[] }, machine: MachineConfig) {
+		this.simulator = simulator
+		this.machine = machine
 		this.resetAll()
 		for (const state of this.states) {
-			state.observer.onConfigure?.(machine)
-			simulator.observers.push(state.observer)
+			state.attached = false
+			// `resetAll` has just cleared every tool, so connecting must not do it again.
+			if (this.wanted.has(state.entry.key)) this.connect(state, false)
 		}
+	}
+
+	/**
+	 * Says which tools something is consuming: a panel that is open, or a feature
+	 * of another panel that reads one.  A tool joining a run in progress starts
+	 * from nothing, since it did not see what came before.
+	 */
+	setWanted(keys: ReadonlySet<string>) {
+		this.wanted = new Set(keys)
+		for (const state of this.states) {
+			const want = this.wanted.has(state.entry.key)
+			if (want === state.attached) continue
+			if (want) this.connect(state)
+			else this.disconnect(state)
+		}
+	}
+
+	private connect(state: ToolState, reset = true) {
+		if (!this.simulator || state.attached) return
+		// Its readings begin here, so whatever it holds is from a run it missed.
+		if (reset) state.observer.onReset?.()
+		if (this.machine) state.observer.onConfigure?.(this.machine)
+		this.simulator.observers.push(state.observer)
+		state.attached = true
+	}
+
+	private disconnect(state: ToolState) {
+		state.attached = false
+		const observers = this.simulator?.observers
+		const at = observers?.indexOf(state.observer) ?? -1
+		if (observers && at >= 0) observers.splice(at, 1)
+		// Its readings stop here, so they are cleared rather than left standing:
+		// a tool that keeps the numbers it had when it stopped watching shows them
+		// beside numbers that are still moving, and does not roll back on a seek.
+		state.observer.onReset?.()
+		state.version += 1
 	}
 
 	/** Tells every tool its accumulated readings belong to a previous run. */

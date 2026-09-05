@@ -7,6 +7,7 @@
 
 import type { Decoded } from '../core/decoder'
 import type { ExecutionObserver } from '../core/observer'
+import { OP_NAMES } from '../core/ops'
 import { RewindLog, type RewindableState } from './rewindLog'
 
 export type InstructionCategory = 'alu' | 'jump' | 'branch' | 'memory' | 'coprocessor' | 'trap' | 'other'
@@ -23,13 +24,13 @@ export const CATEGORY_LABELS: Record<InstructionCategory, string> = {
 
 // bgezal/bltzal branch-and-link like bltz/bgez, just also setting $ra
 //.
-const JUMPS = new Set(['J', 'JAL', 'JR', 'JALR'])
-const BRANCHES = new Set(['BEQ', 'BNE', 'BGEZ', 'BGTZ', 'BLEZ', 'BLTZ', 'BC1T', 'BC1F', 'BGEZAL', 'BLTZAL'])
+const JUMPS = new Set(['j', 'jal', 'jr', 'jalr'])
+const BRANCHES = new Set(['beq', 'bne', 'bgez', 'bgtz', 'blez', 'bltz', 'bc1t', 'bc1f', 'bgezal', 'bltzal'])
 // The unaligned halves and the load-linked/store-conditional pair are memory
 // accesses like the rest; without them they fell through to 'other'.
 const MEMORY = new Set([
-	'LW', 'LH', 'LHU', 'LB', 'LBU', 'SW', 'SH', 'SB', 'LWC1', 'LDC1', 'SWC1', 'SDC1',
-	'LWL', 'LWR', 'SWL', 'SWR', 'LL', 'SC',
+	'lw', 'lh', 'lhu', 'lb', 'lbu', 'sw', 'sh', 'sb', 'lwc1', 'ldc1', 'swc1', 'sdc1',
+	'lwl', 'lwr', 'swl', 'swr', 'll', 'sc',
 ])
 // clo/clz (bit counting) and madd/maddu/msub/msubu (multiply-accumulate) are plain
 // integer arithmetic, alongside the existing mult/div family they extend
@@ -38,20 +39,20 @@ const MEMORY = new Set([
 // of the 'MOV' prefix catch-all below, which would otherwise claim them as coprocessor
 // work alongside movn.s/movz.s.
 const ALU = new Set([
-	'ADD', 'ADDU', 'ADDI', 'ADDIU', 'SUB', 'SUBU', 'MUL', 'MULT', 'MULTU', 'DIV', 'DIVU',
-	'AND', 'ANDI', 'OR', 'ORI', 'XOR', 'XORI', 'NOR',
-	'SLL', 'SRL', 'SRA', 'SLLV', 'SRLV', 'SRAV',
-	'SLT', 'SLTU', 'SLTI', 'SLTIU', 'LUI',
-	'MFHI', 'MFLO', 'MTHI', 'MTLO',
-	'CLO', 'CLZ', 'MADD', 'MADDU', 'MSUB', 'MSUBU',
-	'MOVN', 'MOVZ',
+	'add', 'addu', 'addi', 'addiu', 'sub', 'subu', 'mul', 'mult', 'multu', 'div', 'divu',
+	'and', 'andi', 'or', 'ori', 'xor', 'xori', 'nor',
+	'sll', 'srl', 'sra', 'sllv', 'srlv', 'srav',
+	'slt', 'sltu', 'slti', 'sltiu', 'lui',
+	'mfhi', 'mflo', 'mthi', 'mtlo',
+	'clo', 'clz', 'madd', 'maddu', 'msub', 'msubu',
+	'movn', 'movz',
 ])
 // A trap is neither ALU (it commits no result register), memory, nor coprocessor
 // work: it compares two operands like slt and conditionally raises an exception
 // instead.  So traps get a category of their own rather than a catch-all.
-const TRAPS = new Set(['TEQ', 'TEQI', 'TGE', 'TGEU', 'TGEI', 'TGEIU', 'TLT', 'TLTU', 'TLTI', 'TLTIU', 'TNE', 'TNEI'])
+const TRAPS = new Set(['teq', 'teqi', 'tge', 'tgeu', 'tgei', 'tgeiu', 'tlt', 'tltu', 'tlti', 'tltiu', 'tne', 'tnei'])
 
-export function categoryOf(op: string): InstructionCategory {
+function classify(op: string): InstructionCategory {
 	if (JUMPS.has(op)) return 'jump'
 	if (BRANCHES.has(op)) return 'branch'
 	if (MEMORY.has(op)) return 'memory'
@@ -59,10 +60,21 @@ export function categoryOf(op: string): InstructionCategory {
 	if (TRAPS.has(op)) return 'trap'
 	// Everything the FPU and CP0 do, including the dotted mnemonics: movn.s/movz.s and
 	// movf.s/movt.s/movf.d/movt.d (FP-register conditional moves) land here too.
-	if (op.includes('.') || op.startsWith('MFC') || op.startsWith('MTC') || op.startsWith('MOV') || op === 'ERET') {
+	if (op.includes('.') || op.startsWith('mfc') || op.startsWith('mtc') || op.startsWith('mov') || op === 'eret') {
 		return 'coprocessor'
 	}
 	return 'other'
+}
+
+/**
+ * Which category each op falls in, worked out once from its mnemonic.  The
+ * classification reads names; an instruction being counted has a number, and
+ * an array index is the whole of the lookup.
+ */
+const CATEGORY_BY_OP: readonly InstructionCategory[] = OP_NAMES.map(classify)
+
+export function categoryOf(op: number): InstructionCategory {
+	return CATEGORY_BY_OP[op] ?? 'other'
 }
 
 /**
@@ -138,7 +150,8 @@ export class InstructionStatistics implements ExecutionObserver {
 		this.total += 1
 		const category = categoryOf(decoded.op)
 		this.categories.set(category, (this.categories.get(category) ?? 0) + 1)
-		this.mnemonics.set(decoded.op, (this.mnemonics.get(decoded.op) ?? 0) + 1)
+		const mnemonic = OP_NAMES[decoded.op]
+		this.mnemonics.set(mnemonic, (this.mnemonics.get(mnemonic) ?? 0) + 1)
 		const encoding = formatOf(decoded.word)
 		this.formats.set(encoding, (this.formats.get(encoding) ?? 0) + 1)
 	}

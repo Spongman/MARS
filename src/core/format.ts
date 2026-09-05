@@ -23,14 +23,6 @@ export function formatHex(value: number, digits: number): string {
 }
 
 /**
- * The key a word occupies in a `MemoryView`.  Producer and consumers have to
- * agree exactly, so they all come through here.
- */
-export function memoryKey(address: number): string {
-	return formatWord(address)
-}
-
-/**
  * The inverse of `formatWord`: parses a hex or decimal integer literal, or
  * returns null when `text` is not one.
  *

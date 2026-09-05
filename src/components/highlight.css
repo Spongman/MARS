@@ -1,0 +1,82 @@
+/*
+ * The two fading highlights.
+ *
+ * Navigation is the accent the workspace already uses for "this one", so a
+ * destination reads as a selection that fades.  Change is a warm colour that
+ * belongs to nothing else, so a value that moved cannot be mistaken for a
+ * value that was navigated to.
+ */
+
+/* Replaced at runtime from the settings; these are the defaults in the same
+   shape, so the page has something to fade from before anything is chosen. */
+:root {
+	--flash-navigation: rgba(64, 148, 255, 0.55);
+	--flash-change: rgba(240, 168, 48, 0.55);
+	/* The same two colours at zero alpha, so a fade loses opacity without
+	   drifting through any other hue on its way out. */
+	--flash-navigation-clear: rgba(64, 148, 255, 0);
+	--flash-change-clear: rgba(240, 168, 48, 0);
+	--flash-duration: 2.5s;
+}
+
+/*
+ * Hold, then fade.  Easing straight out of full spends most of the duration
+ * almost invisible, so the highlight reads as a blink however long it is set
+ * to; holding it for the first third and easing away over the rest spends the
+ * duration being seen.
+ */
+@keyframes flash-fade-navigation {
+	0%, 33% { background-color: var(--flash-navigation); }
+	100% { background-color: var(--flash-navigation-clear); }
+}
+
+@keyframes flash-fade-change {
+	0%, 33% { background-color: var(--flash-change); }
+	100% { background-color: var(--flash-change-clear); }
+}
+
+.flash-navigation {
+	animation: flash-fade-navigation var(--flash-duration) ease-in-out;
+	border-radius: var(--radius);
+}
+
+.flash-change {
+	animation: flash-fade-change var(--flash-duration) ease-in-out;
+	border-radius: var(--radius);
+}
+
+/* A whole editor line, which is painted by Monaco rather than by a class on a
+   cell, so it tints instead of filling. */
+.flash-navigation-line {
+	animation: flash-fade-navigation var(--flash-duration) ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.flash-navigation,
+	.flash-change,
+	.flash-navigation-line {
+		animation-duration: 0.01s;
+	}
+}
+
+/*
+ * The one address, or the one register, under the pointer: lit in every window
+ * that shows it.
+ *
+ * Hovering an address anywhere names it for the whole workspace: the word in
+ * memory, the line that assembled it, the rows of the history that ran it, and
+ * any register holding it all light together.  A register works the same way
+ * between the history and the register file.  One rule, so they cannot drift
+ * into several different-looking highlights.
+ */
+.address-hovered,
+.register-hovered {
+	background: var(--accent-surface);
+	color: var(--text-bright);
+	border-radius: var(--radius);
+}
+
+.address-hovered .hex-zero,
+.register-hovered .hex-zero {
+	opacity: 0.7;
+}

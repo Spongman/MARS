@@ -9,6 +9,13 @@ interface EditableCellProps {
 	editable: boolean
 	title?: string
 	className?: string
+	/**
+	 * What the cell covers, published as `data-address` and `data-size`.  The
+	 * pointer finds a cell by looking for those, so a cell that does not carry
+	 * them cannot be hovered even though it is drawn.
+	 */
+	address?: number
+	size?: number
 	/** Returns false to keep the editor open, which is how a bad value reads. */
 	onCommit: (text: string) => boolean
 }
@@ -18,7 +25,7 @@ interface EditableCellProps {
  * Escape abandons, and moving away commits as Enter would, since leaving a
  * half-finished edit behind is the more surprising of the two.
  */
-function EditableCell({ children, text, editable, title, className, onCommit }: EditableCellProps) {
+function EditableCell({ children, text, editable, title, className, address, size, onCommit }: EditableCellProps) {
 	const [editing, setEditing] = React.useState(false)
 	const [draft, setDraft] = React.useState(text)
 	const [rejected, setRejected] = React.useState(false)
@@ -42,7 +49,9 @@ function EditableCell({ children, text, editable, title, className, onCommit }: 
 		return (
 			<span
 				className={className}
-				title={editable ? `${title ?? text} — double-click to edit` : title ?? text}
+				title={editable ? `${title ?? text}: double-click to edit` : title ?? text}
+				data-address={address}
+				data-size={size}
 				onDoubleClick={start}
 			>
 				{children}
