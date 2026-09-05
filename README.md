@@ -7,6 +7,8 @@ A son of MARS (but in a different language). A modern, interactive web-based por
 ![React](https://img.shields.io/badge/Framework-React%2018-61dafb)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
+![The THRAX workspace, running a Mandelbrot program: source, execution history, instruction statistics, memory and a bitmap display](docs/screenshot.png)
+
 ## 🚀 Features
 
 ### Core Functionality
