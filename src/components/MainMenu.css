@@ -1,0 +1,125 @@
+.main-menu {
+	position: relative;
+}
+
+.menu-panel {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	margin-top: 4px;
+	min-width: 160px;
+	padding: 4px 0;
+	background: var(--surface-overlay);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+	z-index: 1000;
+}
+
+.menu-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	padding: 5px 10px;
+	background: none;
+	border: none;
+	color: var(--text-primary);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.menu-item:hover {
+	background: var(--surface-input);
+}
+
+.menu-separator {
+	height: 1px;
+	margin: 4px 0;
+	background: var(--border);
+}
+
+.menu-section {
+	position: relative;
+}
+
+.menu-parent {
+	justify-content: space-between;
+}
+
+.menu-section.expanded > .menu-parent {
+	background: var(--surface-input);
+}
+
+.menu-arrow {
+	color: var(--text-muted);
+	font-size: 14px;
+	line-height: 1;
+}
+
+/* A tick column, held outside the text so the name and the line under it start
+   at the same place whether or not a panel is open, and so a list of tools
+   lines up with a list of examples. */
+.menu-check {
+	position: absolute;
+	left: 10px;
+	color: var(--accent);
+}
+
+.menu-flyout {
+	position: absolute;
+	top: -4px;
+	left: 100%;
+	min-width: 240px;
+	padding: 4px 0;
+	background: var(--surface-overlay);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+	/* The examples list is long: scroll it rather than run off the viewport. */
+	max-height: calc(100vh - 60px);
+	box-sizing: border-box;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	z-index: 1001;
+}
+
+/* The lists that carry prose: one width for both, wide enough that a
+   description is a line or two rather than a paragraph. */
+.menu-flyout-wide {
+	width: 360px;
+}
+
+/* An example or a tool carries a line of prose, so it stacks rather than
+   sitting in a row. */
+.menu-item-described {
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 1px;
+	white-space: normal;
+}
+
+/* Only a panel can be open, so only a panel's row keeps room for the tick.  The
+   room is on the row rather than in the name, so the name and the line under it
+   start at the same place whether or not the tick is there. */
+.menu-item-tick {
+	position: relative;
+	padding-left: 24px;
+}
+
+.menu-item-described .item-name {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 600;
+	color: var(--accent);
+}
+
+.menu-item-described .item-desc {
+	font-size: 11px;
+	color: var(--text-muted);
+}
+

@@ -2,47 +2,29 @@ import React from 'react'
 import { DEFAULT_GUTTER_COLUMNS, RUN_SPEEDS, useTHRAXStore } from '../store/thraxStore'
 import { AddressIcon, CodeBytesIcon, DisassemblyIcon, HeatLinesIcon, HeatMapIcon } from './icons'
 import { nextToggles } from './toggleGroup'
+import MainMenu from './MainMenu'
 import SettingsDialog from './SettingsDialog'
+import { openPanel } from './DockLayout'
 import { openFindReplace } from '../services/findReplace'
 import './Toolbar.css'
-import { EXAMPLES } from '../examples'
 
 interface ToolbarProps {
 	onRun: () => Promise<void>
 	onReset: () => void
 }
 
+/**
+ * The toolbar carries what a run is driven with, left to right in the order it
+ * is used: assemble, run, step, pace.  What is chosen once a session lives in
+ * the menu, and what belongs to the file sits on the right.
+ */
 function Toolbar({ onRun, onReset }: ToolbarProps) {
-	const { assemble, continue: continueExecution, createDocument, exportHexText, gutterColumns, hasSavedProgram, heatMap, heatMapLines, isPaused, isRunning, loadProgram, pause, runSpeed, saveProgram, setGutterColumns, setHeatMap, setHeatMapLines, setRunSpeed, step, stepBack, stepOver, stepToReturn } = useTHRAXStore()
-	const [showExamples, setShowExamples] = React.useState(false)
+	const { assemble, continue: continueExecution, createDocument, exportHexText, gutterColumns, hasSavedProgram, heatMap, heatMapLines, isPaused, isRunning, loadProgram, openPanels, pause, runSpeed, saveProgram, setGutterColumns, setHeatMap, setHeatMapLines, setRunSpeed, step, stepBack, stepOver, stepToReturn } = useTHRAXStore()
 	const [showSettings, setShowSettings] = React.useState(false)
-	const exampleMenuRef = React.useRef<HTMLDivElement>(null)
 	const [storageMessage, setStorageMessage] = React.useState<string | null>(null)
 
-	// Dismiss the examples menu on an outside click or Escape.
-	React.useEffect(() => {
-		if (!showExamples) return
-		const onPointerDown = (event: PointerEvent) => {
-			if (!exampleMenuRef.current?.contains(event.target as Node)) setShowExamples(false)
-		}
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === 'Escape') setShowExamples(false)
-		}
-		document.addEventListener('pointerdown', onPointerDown)
-		document.addEventListener('keydown', onKeyDown)
-		return () => {
-			document.removeEventListener('pointerdown', onPointerDown)
-			document.removeEventListener('keydown', onKeyDown)
-		}
-	}, [showExamples])
-
-	const handleLoadExample = (example: (typeof EXAMPLES)[keyof typeof EXAMPLES]) => {
-		window.dispatchEvent(
-			new CustomEvent('load-example', {
-				detail: { code: example.code },
-			})
-		)
-		setShowExamples(false)
+	const handleLoadExample = (code: string) => {
+		window.dispatchEvent(new CustomEvent('load-example', { detail: { code } }))
 	}
 
 	const showStorageMessage = (message: string) => {
@@ -71,15 +53,30 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 
 	return (
 		<div className="toolbar">
-			<button className="btn btn-icon btn-primary" onClick={() => (isPaused ? void continueExecution() : void onRun())} title={isPaused ? 'Continue (F5)' : 'Run (F5)'}>
-				▶
+			<MainMenu
+				onSettings={() => setShowSettings(true)}
+				onLoadExample={handleLoadExample}
+				onOpenPanel={openPanel}
+				openPanels={openPanels}
+			/>
+
+			<span className="toolbar-separator" />
+
+			<button className="btn btn-secondary" onClick={assemble} title="Assemble the current source">
+				Assemble
 			</button>
-			<button className="btn btn-icon" onClick={pause} disabled={!isRunning} title="Pause">
-				⏸
-			</button>
-			<button className="btn btn-icon" onClick={onReset} title="Reset (alt+F5), restart with shift+F5">
-				↺
-			</button>
+
+			<div className="btn-group">
+				<button className="btn btn-icon btn-primary" onClick={() => (isPaused ? void continueExecution() : void onRun())} title={isPaused ? 'Continue (F5)' : 'Run (F5)'}>
+					▶
+				</button>
+				<button className="btn btn-icon" onClick={pause} disabled={!isRunning} title="Pause">
+					⏸
+				</button>
+				<button className="btn btn-icon" onClick={onReset} title="Reset (alt+F5), restart with shift+F5">
+					↺
+				</button>
+			</div>
 
 			<div className="btn-group">
 				<button className="btn btn-icon" onClick={() => stepBack()} disabled={!isPaused} title="Step back">
@@ -96,8 +93,6 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 				</button>
 			</div>
 
-			<span className="toolbar-separator" />
-
 			<label className="toolbar-speed" title="Instructions per second while running; the rightmost notch runs at full speed">
 				<span className="toolbar-speed-icon" aria-hidden="true">🐢</span>
 				<input
@@ -113,20 +108,6 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 			</label>
 
 			<span className="toolbar-separator" />
-
-			<button className="btn btn-secondary" onClick={assemble} title="Assemble the current source">
-				Assemble
-			</button>
-
-			<button className="btn btn-icon" onClick={() => setShowSettings(true)} title="Settings">
-				⚙
-			</button>
-
-			<span className="toolbar-separator" />
-
-			<button className="btn btn-icon" onClick={createDocument} title="New file">
-				+
-			</button>
 
 			<div className="gutter-toggles" role="group" aria-label="Gutter columns">
 				<button
@@ -161,7 +142,7 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 				</button>
 			</div>
 
-			<div className="gutter-toggles">
+			<div className="gutter-toggles" role="group" aria-label="Profile heat map">
 				<button
 					className={`gutter-toggle${heatMap ? ' active' : ''}`}
 					type="button"
@@ -185,38 +166,19 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 				</button>
 			</div>
 
-			<button
-				className="btn btn-secondary"
-				onClick={openFindReplace}
-				title="Find and replace in the source being assembled"
-			>
+			<div className="spacer"></div>
+
+			{storageMessage && <span className="storage-message" role="status">{storageMessage}</span>}
+
+			<button className="btn btn-secondary" onClick={openFindReplace} title="Find and replace in the source being assembled">
 				Find
 			</button>
 
-			<div className="spacer"></div>
+			<span className="toolbar-separator" />
 
-			<div className="example-dropdown" ref={exampleMenuRef}>
-				<button
-					className="btn btn-secondary"
-					onClick={() => setShowExamples(!showExamples)}
-				>
-					Examples
-				</button>
-				{showExamples && (
-					<div className="dropdown-menu">
-						{Object.entries(EXAMPLES).map(([key, example]) => (
-							<button
-								key={key}
-								className="dropdown-item"
-								onClick={() => handleLoadExample(example)}
-							>
-								<span className="item-name">{example.name}</span>
-								<span className="item-desc">{example.description}</span>
-							</button>
-						))}
-					</div>
-				)}
-			</div>
+			<button className="btn btn-icon" onClick={createDocument} title="New file">
+				+
+			</button>
 			<button className="btn btn-secondary" onClick={handleSave} title="Save open source tabs in this browser">
 				Save
 			</button>
@@ -226,7 +188,7 @@ function Toolbar({ onRun, onReset }: ToolbarProps) {
 			<button className="btn btn-secondary" onClick={handleExport} title="Download HexText">
 				Hex
 			</button>
-			{storageMessage && <span className="storage-message" role="status">{storageMessage}</span>}
+
 			{showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
 		</div>
 	)

@@ -1,5 +1,5 @@
 import React from 'react'
-import { HEX_DIMMING_MODES, MAX_BACKSTEP_LIMIT, MEMORY_CONFIGURATIONS, SETTINGS_VALIDATORS, type HexDimming, type MemoryConfigurationName, type ThraxSettings } from '../core/settings'
+import { HEX_DIMMING_MODES, MAX_BACKSTEP_LIMIT, MAX_HIGHLIGHT_SECONDS, MEMORY_CONFIGURATIONS, MIN_HIGHLIGHT_SECONDS, SETTINGS_VALIDATORS, type HexDimming, type MemoryConfigurationName, type ThraxSettings } from '../core/settings'
 import { formatWord } from '../core/format'
 import { useTHRAXStore } from '../store/thraxStore'
 import Modal from './Modal'
@@ -250,6 +250,54 @@ function SettingsDialog({ onClose }: SettingsDialogProps) {
 					checked={settings.displayAddressesInHex}
 					onChange={set('displayAddressesInHex')}
 				/>
+				<Check
+					label="Flash where a click navigates to"
+					hint="The register, word or source line a click in another panel sent the eye to"
+					checked={settings.highlightNavigation}
+					onChange={set('highlightNavigation')}
+				/>
+				<Check
+					label="Flash a value that just changed"
+					hint="A second colour, since where you went and what moved are different questions"
+					checked={settings.highlightChanges}
+					onChange={set('highlightChanges')}
+				/>
+				<label className="settings-row settings-field" title="How long a highlight takes to fade">
+					<span>
+						Highlight fade
+						<span className="settings-hint">The eye is usually in another panel when a flash starts, so it has to last long enough to be followed</span>
+					</span>
+					<input
+						type="number"
+						min={MIN_HIGHLIGHT_SECONDS}
+						max={MAX_HIGHLIGHT_SECONDS}
+						step={0.5}
+						value={settings.highlightSeconds}
+						disabled={!settings.highlightNavigation && !settings.highlightChanges}
+						onChange={(event) => {
+							const seconds = Number(event.target.value)
+							if (SETTINGS_VALIDATORS.highlightSeconds(seconds)) set('highlightSeconds')(seconds)
+						}}
+					/>
+				</label>
+				<label className="settings-row settings-field" title="The colour a navigation destination fades from">
+					<span>Navigation colour</span>
+					<input
+						type="color"
+						value={settings.highlightNavigationColor}
+						disabled={!settings.highlightNavigation}
+						onChange={(event) => set('highlightNavigationColor')(event.target.value)}
+					/>
+				</label>
+				<label className="settings-row settings-field" title="The colour a changed value fades from">
+					<span>Change colour</span>
+					<input
+						type="color"
+						value={settings.highlightChangeColor}
+						disabled={!settings.highlightChanges}
+						onChange={(event) => set('highlightChangeColor')(event.target.value)}
+					/>
+				</label>
 				<label className="settings-row settings-field" title="How much of a hex number's leading zero run is dimmed">
 					<span>
 						Dim leading zeros

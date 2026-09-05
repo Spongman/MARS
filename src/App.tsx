@@ -3,6 +3,7 @@ import { sourceSignature, useTHRAXStore } from './store/thraxStore'
 import { useExamples } from './hooks/useExamples'
 import Toolbar from './components/Toolbar'
 import DockLayout from './components/DockLayout'
+import { useHighlightTheme } from './components/highlight'
 import './App.css'
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
 	const [error, setError] = React.useState<string | null>(null)
 
 	useExamples()
+	useHighlightTheme()
 
 	// Keep the assembled program (and so the memory view) in step with the source.
 	React.useEffect(() => {

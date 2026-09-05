@@ -21,10 +21,10 @@ const LAYOUT_KEY = 'thrax-web.dock-layout'
  * away every layout stored by the release before it, so this pins the version
  * a shipped layout carries and fails if it moves.
  */
-const SHIPPED_LAYOUT_VERSION = 2
+const SHIPPED_LAYOUT_VERSION = 3
 
-/** The panels a layout stored before the ported tools existed would name. */
-const OLD_PANELS = ['registers', 'callStack', 'bitmap', 'keyboardDisplay', 'statistics', 'cache', 'branchHistory', 'memory', 'pipeline', 'xray', 'console']
+/** A stored layout that has been pared back to the windows and one tool. */
+const STORED_PANELS = ['registers', 'callStack', 'memory', 'console', 'cache']
 
 function storeLayout(components: string[]) {
 	const panels = Object.fromEntries(components.map((component) => [component, { id: component, contentComponent: component }]))
@@ -71,31 +71,49 @@ function fakeApi() {
 const { buildLayout } = await import('../../components/DockLayout')
 
 describe('dock layout', () => {
-	it('keeps a layout stored before the ported panels existed, and adds them to it', () => {
-		storeLayout(OLD_PANELS)
+	it('opens the windows a run is watched through, and no tool', () => {
+		storage.clear()
+		const dock = fakeApi()
+		buildLayout(dock.api, new Set())
+
+		const opened = dock.added.filter((options) => options.component !== 'source').map((options) => options.id)
+		expect(opened).toEqual(['registers', 'memory', 'callStack', 'console'])
+		// A tool is opened from the menu, so nothing fetches its code on load.
+		for (const id of ['cache', 'xray', 'marsBot', 'digitalLab']) expect(dock.ids()).not.toContain(id)
+	})
+
+	it('keeps a stored arrangement rather than putting back what it left out', () => {
+		storeLayout(STORED_PANELS)
 		const dock = fakeApi()
 		buildLayout(dock.api, new Set())
 
 		// The stored arrangement was restored, not thrown away for the default one.
 		expect(dock.restored()).not.toBeNull()
 		expect(dock.cleared()).toBe(0)
-		for (const id of OLD_PANELS) expect(dock.ids()).toContain(id)
+		for (const id of STORED_PANELS) expect(dock.ids()).toContain(id)
 
-		// The panels it predates are added beside the ones they belong with.
-		const addedTools = dock.added.filter((options) => options.component !== 'source')
-		expect(addedTools.map((options) => options.id)).toEqual(['symbols', 'memoryReference', 'screenMagnifier', 'introToTools', 'history', 'marsBot', 'scavengerHunt', 'digitalLab'])
-		for (const options of addedTools) {
-			const reference = options.position && 'referencePanel' in options.position ? options.position.referencePanel : undefined
-			expect(OLD_PANELS).toContain(reference)
-		}
+		// Every window it holds is already there, so nothing is added back: closing
+		// a panel is how it is turned off, and it must stay closed.
+		expect(dock.added.filter((options) => options.component !== 'source')).toEqual([])
+	})
+
+	it('adds back a window a stored arrangement predates', () => {
+		storeLayout(['registers', 'memory', 'console'])
+		const dock = fakeApi()
+		buildLayout(dock.api, new Set())
+
+		const added = dock.added.filter((options) => options.component !== 'source')
+		expect(added.map((options) => options.id)).toEqual(['callStack'])
+		const reference = added[0].position && 'referencePanel' in added[0].position ? added[0].position.referencePanel : undefined
+		expect(reference).toBe('registers')
 	})
 
 	it('starts over only when a stored layout names a panel that no longer exists', () => {
-		storeLayout([...OLD_PANELS, 'retired'])
+		storeLayout([...STORED_PANELS, 'screenMagnifier'])
 		const dock = fakeApi()
 		buildLayout(dock.api, new Set())
 
 		expect(dock.restored()).toBeNull()
-		expect(dock.ids()).toContain('marsBot')
+		expect(dock.ids()).toContain('registers')
 	})
 })

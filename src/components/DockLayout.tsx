@@ -9,23 +9,43 @@ import RegisterView from './RegisterView'
 import MemoryView from './MemoryView'
 import ConsoleOutput from './ConsoleOutput'
 import CallStackView from './CallStackView'
-import BitmapDisplay from './BitmapDisplay'
-import KeyboardDisplayTool from './KeyboardDisplayTool'
-import InstructionStatisticsView from './InstructionStatisticsView'
-import IntroToToolsView from './IntroToToolsView'
-import CacheSimulatorView from './CacheSimulatorView'
-import BranchHistoryView from './BranchHistoryView'
-import MarsBotView from './MarsBotView'
-import MemoryReferenceView from './MemoryReferenceView'
-import MipsXrayView from './MipsXrayView'
 import Modal from './Modal'
-import PipelineView from './PipelineView'
-import ScavengerHuntView from './ScavengerHuntView'
-import ScreenMagnifierView from './ScreenMagnifierView'
-import { HistoryPanel } from './HistoryView'
-import { SymbolTablePanel } from './SymbolTableView'
-import DigitalLabView from './DigitalLabView'
+import { INITIAL_PANELS, PANELS, panelById } from './panels'
 import './DockLayout.css'
+
+/**
+ * A view fetched the first time its panel is opened.
+ *
+ * Only the windows a fresh workspace shows are in the first bundle.  Everything
+ * the menu opens is a chunk of its own, so a tool nobody opened, and the
+ * drawings and tables behind it, are never downloaded at all.
+ */
+function deferred<P extends object>(load: () => Promise<{ default: React.ComponentType<P> }>): React.FC<P> {
+	const View = React.lazy(load) as unknown as React.ComponentType<P>
+	const Deferred = (props: P) => (
+		<React.Suspense fallback={<div className="dock-panel dock-panel-loading">Loading…</div>}>
+			<View {...props} />
+		</React.Suspense>
+	)
+	Deferred.displayName = 'Deferred'
+	return Deferred
+}
+
+const BitmapDisplay = deferred(() => import('./BitmapDisplay'))
+const KeyboardDisplayTool = deferred(() => import('./KeyboardDisplayTool'))
+const InstructionStatisticsView = deferred(() => import('./InstructionStatisticsView'))
+const CacheSimulatorView = deferred(() => import('./CacheSimulatorView'))
+const BranchHistoryView = deferred(() => import('./BranchHistoryView'))
+const MarsBotView = deferred(() => import('./MarsBotView'))
+const MemoryReferenceView = deferred(() => import('./MemoryReferenceView'))
+const MipsXrayView = deferred(() => import('./MipsXrayView'))
+const PipelineView = deferred(() => import('./PipelineView'))
+const ScavengerHuntView = deferred(() => import('./ScavengerHuntView'))
+const DigitalLabView = deferred(() => import('./DigitalLabView'))
+// These two read the store themselves, so what is fetched is the panel rather
+// than a view it is wrapped around.
+const HistoryPanel = deferred(async () => ({ default: (await import('./HistoryView')).HistoryPanel }))
+const SymbolTablePanel = deferred(async () => ({ default: (await import('./SymbolTableView')).SymbolTablePanel }))
 
 /** Open files are panels of the main tab group, one editor each. */
 const FILE_PREFIX = 'file:'
@@ -40,7 +60,7 @@ const SourcePanel = (props: IDockviewPanelProps) => (
 )
 
 const RegistersPanel = () => {
-	const { registers, fpRegisters, fpConditionFlags, cp0Registers, halted, isPaused, isRunning, setRegisterValue, setFpRegisterValue, setCp0RegisterValue } = useTHRAXStore()
+	const { registers, fpRegisters, fpConditionFlags, cp0Registers, focusedRegister, halted, hoveredAddress, hoveredRegister, isPaused, isRunning, setHoveredAddress, setHoveredRegister, setRegisterValue, setFpRegisterValue, setCp0RegisterValue } = useTHRAXStore()
 	// Only while the machine is stopped, and only once it has one to edit.
 	const editable = !isRunning && (isPaused || halted)
 
@@ -61,6 +81,11 @@ const RegistersPanel = () => {
 			<RegisterView
 				registers={registers}
 				editable={editable}
+				focused={focusedRegister}
+				hoveredAddress={hoveredAddress}
+				onHoverAddress={setHoveredAddress}
+				hoveredRegister={hoveredRegister}
+				onHoverRegister={setHoveredRegister}
 				onEdit={handleEdit}
 				fpRegisters={fpRegisters}
 				fpConditionFlags={fpConditionFlags}
@@ -71,7 +96,7 @@ const RegistersPanel = () => {
 }
 
 const MemoryPanel = () => {
-	const { callStack, focusedMemory, halted, isPaused, isRunning, memory, pc, selectedFrame, setMemoryValue, sourceIndex, setHoveredAddress } = useTHRAXStore()
+	const { callStack, focusedMemory, halted, hoveredAddress, isPaused, isRunning, memory, pc, setMemoryValue, sourceIndex, setHoveredAddress } = useTHRAXStore()
 	const editable = !isRunning && (isPaused || halted)
 	// Mark the program counter only where the editor can highlight it too: once a
 	// program halts, the pc sits past the last instruction and belongs to neither.
@@ -83,11 +108,10 @@ const MemoryPanel = () => {
 				memory={memory}
 				pc={instructionAddresses.has(pc) ? pc : null}
 				returnAddresses={returnAddresses}
-				// A panel asking for an address wins over the selected call frame,
-				// since it is the more recent thing the user did.
-				focusAddress={focusedMemory?.address ?? (selectedFrame === null ? null : selectedFrame === -1 ? pc : callStack[selectedFrame]?.returnAddress ?? null)}
+				focusAddress={focusedMemory?.address ?? null}
 				focusRequest={focusedMemory?.request ?? 0}
 				onHoverAddress={setHoveredAddress}
+				hoveredAddress={hoveredAddress}
 				editable={editable}
 				onEditWord={setMemoryValue}
 			/>
@@ -101,7 +125,14 @@ const ConsolePanel = () => {
 }
 
 const CallStackPanel = () => {
-	const { callStack, halted, labels, pc, selectedFrame, setSelectedFrame, sourceIndex } = useTHRAXStore()
+	const { callStack, focusMemoryAddress, halted, labels, pc, selectedFrame, setSelectedFrame, sourceIndex } = useTHRAXStore()
+	// Selecting a frame shows where it returns to, which is a navigation like any
+	// other: the memory window comes forward and the word is lit where it lands.
+	const selectFrame = (frame: number | null) => {
+		setSelectedFrame(frame)
+		const address = frame === null ? null : frame === -1 ? pc : callStack[frame]?.returnAddress ?? null
+		if (address !== null) focusMemoryAddress(address)
+	}
 	// Any assembled file having code means there is a program to have a stack.
 	const hasProgram = React.useMemo(() => [...sourceIndex.files()].some((file) => sourceIndex.hasCode(file)), [sourceIndex])
 	return (
@@ -113,7 +144,7 @@ const CallStackPanel = () => {
 				hasProgram={hasProgram}
 				halted={halted}
 				selectedFrame={selectedFrame}
-				onSelect={setSelectedFrame}
+				onSelect={selectFrame}
 			/>
 		</div>
 	)
@@ -175,12 +206,6 @@ const ScavengerHuntPanel = () => {
 	return <div className="dock-panel"><ScavengerHuntView scavengerHunt={scavengerHunt} /></div>
 }
 
-// The magnifier lenses the workspace and the introduction is prose, so neither
-// watches a run and neither has a tool behind it.
-const ScreenMagnifierPanel = () => <div className="dock-panel"><ScreenMagnifierView /></div>
-
-const IntroToToolsPanel = () => <div className="dock-panel"><IntroToToolsView /></div>
-
 /** Carries the console's plea for attention while its tab sits in the background. */
 const ConsoleTab = (props: IDockviewPanelHeaderProps) => {
 	const attention = useTHRAXStore((state) => state.consoleAttention)
@@ -223,39 +248,50 @@ const components = {
 	marsBot: MarsBotPanel,
 	scavengerHunt: ScavengerHuntPanel,
 	digitalLab: DigitalLabPanel,
-	screenMagnifier: ScreenMagnifierPanel,
-	introToTools: IntroToToolsPanel,
 	pipeline: PipelinePanel,
 	xray: XrayPanel,
 }
 
 const LAYOUT_KEY = 'thrax-web.dock-layout'
-/** Bumped when a stored layout can no longer be read; older ones are discarded. */
-const LAYOUT_VERSION = 2
+/**
+ * Bumped when a stored layout can no longer be read; older ones are discarded.
+ * A layout holding tabs a release no longer opens by itself is one such.
+ */
+const LAYOUT_VERSION = 3
 
-/** Tool panels hang off the file panels, which are the main tab group. */
-const toolPanels = (anchor: string): AddPanelOptions[] => [
-	{ id: 'registers', component: 'registers', title: 'Registers', position: { referencePanel: anchor, direction: 'right' }, initialWidth: 340 },
-	{ id: 'callStack', component: 'callStack', title: 'Call Stack', position: { referencePanel: 'registers', direction: 'within' }, inactive: true },
-	{ id: 'symbols', component: 'symbols', title: 'Symbols', position: { referencePanel: 'registers', direction: 'within' }, inactive: true },
-	{ id: 'bitmap', component: 'bitmap', title: 'Bitmap', position: { referencePanel: 'registers', direction: 'within' }, inactive: true },
-	{ id: 'keyboardDisplay', component: 'keyboardDisplay', title: 'Keyboard / Display', position: { referencePanel: 'registers', direction: 'within' }, inactive: true },
-	{ id: 'statistics', component: 'statistics', title: 'Statistics', position: { referencePanel: 'registers', direction: 'within' }, inactive: true },
-	{ id: 'cache', component: 'cache', title: 'Cache', position: { referencePanel: 'registers', direction: 'within' }, inactive: true },
-	{ id: 'branchHistory', component: 'branchHistory', title: 'Branches', position: { referencePanel: 'registers', direction: 'within' }, inactive: true },
-	{ id: 'memoryReference', component: 'memoryReference', title: 'Memory Reference', position: { referencePanel: 'registers', direction: 'within' }, inactive: true },
-	{ id: 'screenMagnifier', component: 'screenMagnifier', title: 'Magnifier', position: { referencePanel: 'registers', direction: 'within' }, inactive: true },
-	{ id: 'introToTools', component: 'introToTools', title: 'About Tools', position: { referencePanel: 'registers', direction: 'within' }, inactive: true },
-	{ id: 'memory', component: 'memory', title: 'Memory', position: { referencePanel: anchor, direction: 'below' }, initialHeight: 260 },
-	{ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'memory', direction: 'within' }, inactive: true },
-	{ id: 'pipeline', component: 'pipeline', title: 'Pipeline', position: { referencePanel: 'memory', direction: 'within' }, inactive: true },
-	{ id: 'xray', component: 'xray', title: 'X-Ray', position: { referencePanel: 'memory', direction: 'within' }, inactive: true },
-	// The two device panels draw a world, so they sit in the wide group.
-	{ id: 'marsBot', component: 'marsBot', title: 'Mars Bot', position: { referencePanel: 'memory', direction: 'within' }, inactive: true },
-	{ id: 'scavengerHunt', component: 'scavengerHunt', title: 'Scavenger Hunt', position: { referencePanel: 'memory', direction: 'within' }, inactive: true },
-	{ id: 'digitalLab', component: 'digitalLab', title: 'Digital Lab', position: { referencePanel: 'memory', direction: 'within' }, inactive: true },
-	{ id: 'console', component: 'console', title: 'Console', tabComponent: 'console', position: { referencePanel: 'memory', direction: 'within' }, inactive: true },
-]
+/**
+ * Where a panel lands: beside the registers, or below the source with the
+ * memory.  The group leaders are placed against the file panels first, so a
+ * panel opened later has something of its own kind to join.
+ */
+const DOCK_LEADER: Record<'side' | 'bottom', string> = { side: 'registers', bottom: 'memory' }
+
+function panelOptions(id: string, anchor: string): AddPanelOptions | null {
+	const panel = panelById(id)
+	if (!panel) return null
+	const leader = DOCK_LEADER[panel.dock]
+	const options = { id: panel.id, component: panel.id, title: panel.title }
+	// The console asks for attention through its tab, so it draws its own.
+	const tab = panel.id === 'console' ? { tabComponent: 'console' } : {}
+	if (panel.id === leader) {
+		const placement = panel.dock === 'side'
+			? { position: { referencePanel: anchor, direction: 'right' as const }, initialWidth: 340 }
+			: { position: { referencePanel: anchor, direction: 'below' as const }, initialHeight: 260 }
+		return { ...options, ...tab, ...placement }
+	}
+	return { ...options, ...tab, position: { referencePanel: leader, direction: 'within' as const }, inactive: true }
+}
+
+/**
+ * The panels a fresh workspace opens, leaders first so the rest have a group to
+ * join.  A tool is not among them: it is opened from the menu, and until then
+ * neither its tab nor its code is here.
+ */
+function initialPanels(anchor: string): AddPanelOptions[] {
+	const order = [...INITIAL_PANELS].sort((left, right) =>
+		Number(right.id === DOCK_LEADER[right.dock]) - Number(left.id === DOCK_LEADER[left.dock]))
+	return order.map((panel) => panelOptions(panel.id, anchor)).filter((options): options is AddPanelOptions => options !== null)
+}
 
 /** A stored layout is only usable while every panel in it still has a component. */
 function readStoredLayout(): SerializedDockview | null {
@@ -319,8 +355,10 @@ function syncFilePanels(api: DockviewApi, documents: readonly SourceDocument[], 
 }
 
 /**
- * Restores the stored arrangement, then adds back any panel it is missing so a
- * panel added by a later release still appears beside the ones it belongs with.
+ * Restores the stored arrangement, then adds back any of the panels a fresh
+ * workspace opens that it is missing, so a window added by a later release
+ * still appears beside the ones it belongs with.  A panel the arrangement left
+ * out on purpose is not put back: closing one is how it is turned off.
  */
 export function buildLayout(api: DockviewApi, removing: Set<string>) {
 	const stored = readStoredLayout()
@@ -335,7 +373,7 @@ export function buildLayout(api: DockviewApi, removing: Set<string>) {
 	const { activeDocumentId, documents } = useTHRAXStore.getState()
 	const anchor = syncFilePanels(api, documents, removing)
 
-	for (const options of toolPanels(anchor?.id ?? '')) {
+	for (const options of initialPanels(anchor?.id ?? '')) {
 		if (api.getPanel(options.id)) continue
 		const reference = options.position && 'referencePanel' in options.position ? options.position.referencePanel : undefined
 		if (!restored || (typeof reference === 'string' && api.getPanel(reference))) {
@@ -347,11 +385,50 @@ export function buildLayout(api: DockviewApi, removing: Set<string>) {
 		api.addPanel({ ...loose, inactive: true })
 	}
 	api.getPanel(filePanelId(activeDocumentId))?.api.setActive()
+	publishOpenPanels(api)
+}
+
+/**
+ * The dock this window is showing.  A module-level handle rather than a prop:
+ * the menu that opens a panel is in the toolbar, which is not inside the dock.
+ */
+let dockApi: DockviewApi | null = null
+
+/**
+ * Opens a panel from the menu, or brings it forward when it is already there.
+ * It joins the group its own kind sits in, or whichever group is in front when
+ * that one has been closed.
+ */
+export function openPanel(id: string) {
+	const api = dockApi
+	if (!api) return
+	const existing = api.getPanel(id)
+	if (existing) {
+		existing.api.setActive()
+		return
+	}
+	const options = panelOptions(id, api.panels.find(isFilePanel)?.id ?? '')
+	if (!options) return
+	const reference = options.position && 'referencePanel' in options.position ? options.position.referencePanel : undefined
+	if (typeof reference === 'string' && !api.getPanel(reference)) {
+		const { position, ...loose } = options
+		api.addPanel(loose).api.setActive()
+		return
+	}
+	api.addPanel({ ...options, inactive: false }).api.setActive()
+}
+
+/** What the menu ticks: the panels currently on screen. */
+function publishOpenPanels(api: DockviewApi) {
+	const open = api.panels.filter((panel) => !isFilePanel(panel)).map((panel) => panel.id)
+	const { openPanels, setOpenPanels } = useTHRAXStore.getState()
+	if (open.length === openPanels.length && open.every((id, index) => id === openPanels[index])) return
+	setOpenPanels(open)
 }
 
 function DockLayout() {
 	const apiRef = React.useRef<DockviewApi | null>(null)
-	const { activeDocumentId, cancelCloseDocument, confirmCloseDocument, console: output, consoleAttention, documents, pendingClose, pendingInput, runToken, setConsoleAttention } = useTHRAXStore()
+	const { activeDocumentId, cancelCloseDocument, confirmCloseDocument, console: output, consoleAttention, documents, focusedMemory, focusedRegister, focusedSource, pendingClose, pendingInput, runToken, setConsoleAttention } = useTHRAXStore()
 	const switchedForRun = React.useRef<number | null>(null)
 	const deliveredOutput = React.useRef('')
 	/** File panels this component is removing, which are not files being closed. */
@@ -363,6 +440,7 @@ function DockLayout() {
 
 	const onReady = React.useCallback((event: DockviewReadyEvent) => {
 		apiRef.current = event.api
+		dockApi = event.api
 		buildLayout(event.api, removingPanels.current)
 		shownDocument.current = useTHRAXStore.getState().activeDocumentId
 
@@ -385,6 +463,7 @@ function DockLayout() {
 		}))
 		// Dragging and resizing fire in bursts, so the layout is written once things settle.
 		subscriptions.current.push(event.api.onDidLayoutChange(() => {
+			publishOpenPanels(event.api)
 			window.clearTimeout(saveHandle.current)
 			saveHandle.current = window.setTimeout(() => saveLayout(event.api), 300)
 		}))
@@ -401,6 +480,7 @@ function DockLayout() {
 		window.clearTimeout(saveHandle.current)
 		for (const subscription of subscriptions.current) subscription.dispose()
 		subscriptions.current = []
+		dockApi = null
 	}, [])
 
 	// One panel per open file, kept in step as files are opened, renamed and closed.
@@ -445,6 +525,28 @@ function DockLayout() {
 		const handle = window.setTimeout(() => setConsoleAttention('none'), 1200)
 		return () => window.clearTimeout(handle)
 	}, [consoleAttention, setConsoleAttention])
+
+	// A navigation is worthless if its destination is behind another tab, so the
+	// panel it lands in comes forward.  A source line brings its own file forward
+	// through the store, which already owns which file is in front.
+	React.useEffect(() => {
+		if (focusedMemory) openPanel('memory')
+	}, [focusedMemory])
+	React.useEffect(() => {
+		if (focusedRegister) openPanel('registers')
+	}, [focusedRegister])
+	React.useEffect(() => {
+		if (!focusedSource) return
+		const { documents: open, selectDocument } = useTHRAXStore.getState()
+		const target = open.find((document) => document.title === focusedSource.file)
+		if (!target) return
+		selectDocument(target.id)
+		// Selecting a file that is already the active one changes nothing in the
+		// store, so the effect that follows the active document stays quiet and the
+		// tab stays behind whatever is in front of it.  A navigation has to bring
+		// it forward either way.
+		apiRef.current?.getPanel(filePanelId(target.id))?.api.setActive()
+	}, [focusedSource])
 
 	const pending = documents.find((document) => document.id === pendingClose)
 

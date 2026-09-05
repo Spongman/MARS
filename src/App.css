@@ -59,12 +59,6 @@
 	border-left-color: var(--data-label);
 }
 
-/* Source line matching the instruction hovered in the memory view. */
-.memory-hover-line {
-	background: rgba(244, 208, 63, 0.16);
-	box-shadow: inset 2px 0 0 var(--warning);
-}
-
 .current-execution-line {
 	background: rgba(0, 122, 204, 0.18);
 }
@@ -80,22 +74,82 @@
 }
 
 /* Assembled machine words shown beside the line numbers while executing. */
-.code-word {
+/*
+ * The gutter columns, in both the shapes they are drawn in: text injected into
+ * a line, and the rows of a view zone for words the source has no line for.
+ *
+ * Every rule that carries a colour is scoped to the editor.  Monaco writes its
+ * theme out at runtime as `.mtk1 { color: ... }`, and a runtime stylesheet lands
+ * after this one, so a bare class here ties with the theme and loses: injected
+ * text came out in the theme's colour while the identical zone rows, which are
+ * never tokenised, came out in ours.
+ */
+.monaco-editor .code-word {
 	color: var(--text-muted);
 	white-space: pre;
 }
 
-.code-word-current {
+/*
+ * One size for every hover in the workspace.
+ *
+ * Monaco sizes the hover it draws over content from the editor's font, and the
+ * one it draws over the line numbers and the glyph margin from nothing at all,
+ * so the profile popup came out at whatever size the page was set to while the
+ * data tip beside it came out at the editor's.  `SourcePane` publishes the
+ * editor's font as these variables and this rule spends them on all of them:
+ * Monaco's two widgets, and the tip the gutter draws for itself.
+ */
+.monaco-editor .monaco-hover-content {
+	font-size: var(--thrax-hover-font-size, 14px);
+	line-height: var(--thrax-hover-line-height, 1.5);
+}
+
+/* An address reads as one here too, in the colour the memory and history
+   windows give theirs rather than the muted grey of the columns beside it. */
+.monaco-editor .code-word-gutter-address {
+	color: var(--data-register);
+}
+
+/* The line number of the word under the pointer, wherever it is being pointed
+   at.  The address itself lights in the gutter; this is the mark that shows
+   when the address column is turned off. */
+.monaco-editor .address-hovered-number {
+	background: var(--accent-surface);
+	color: var(--text-bright);
+}
+
+/* The address is the way into the memory window, so it offers the same
+   highlight that window gives a word under the pointer. */
+.monaco-editor .code-word-address:hover,
+.monaco-editor .code-word-address.address-hovered {
+	background: var(--accent-surface);
+	color: var(--text-bright);
+	border-radius: var(--radius);
+	cursor: pointer;
+}
+
+/* The disassembly is a span of its own so a pointer over it can be told which
+   character it is on, and answer for the register or the value there. */
+.monaco-editor .code-word-asm {
+	white-space: pre;
+}
+
+.monaco-editor .code-word-current {
 	color: var(--warning);
 	font-weight: bold;
 }
 
-.code-word-zone {
+/* A view zone is painted before the text layer that shares its container, so
+   `.view-lines` covers it and takes the pointer: the rows showed but nothing in
+   them could be hovered or clicked.  This lifts them over it. */
+.monaco-editor .code-word-zone {
 	color: var(--text-muted);
 	white-space: pre;
+	position: relative;
+	z-index: 10;
 }
 
-.code-word-row-current {
+.monaco-editor .code-word-row-current {
 	background: rgba(0, 122, 204, 0.18);
 }
 

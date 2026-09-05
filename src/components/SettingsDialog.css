@@ -13,6 +13,20 @@
 .settings-dialog .modal-body {
 	padding-top: 0;
 	padding-bottom: 0;
+	/* The rows sit on the editor's own ground, so the title bands above them
+	   read as raised over the sections they name. */
+	background: var(--surface-base);
+}
+
+/* Room between a title band and the first row it introduces. */
+.settings-dialog .settings-title + * {
+	padding-top: 10px;
+}
+
+/* And the same at the tail of a section, which is the row before the next
+   title: a title cannot carry the margin itself, per the note above. */
+.settings-dialog .modal-body > *:has(+ .settings-title) {
+	padding-bottom: 10px;
 }
 
 .settings-dialog .modal-body > *:last-child {

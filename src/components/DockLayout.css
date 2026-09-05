@@ -18,6 +18,13 @@
 	overflow: hidden;
 }
 
+/* Shown for the moment a tool's code is being fetched, the first time it is
+   opened. */
+.dock-panel-loading {
+	color: var(--text-muted);
+	font-size: 12px;
+}
+
 /* The console asks to be noticed while it is hidden: once for output, and
    until it is opened for input. */
 @keyframes console-tab-flash {

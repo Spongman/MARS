@@ -1,5 +1,6 @@
 import type { CallFrame } from '../core/types'
 import { formatWord } from '../core/format'
+import { HexWord } from './HexNumber'
 import './CallStackView.css'
 
 interface CallStackViewProps {
@@ -43,8 +44,8 @@ function CallStackView({ frames, pc, labels, hasProgram, halted, selectedFrame, 
 				onClick={() => onSelect(selectedFrame === -1 ? null : -1)}
 			>
 				<div className="call-stack-name">#0 {describeAddress(pc, labels)}{halted ? ' (halted)' : ''}</div>
-				<div>PC {formatAddress(pc)}</div>
-				{reversed.length > 0 && <div>Return {formatAddress(reversed[0].returnAddress)}</div>}
+				<div>PC <HexWord value={pc} /></div>
+				{reversed.length > 0 && <div>Return <HexWord value={reversed[0].returnAddress} /></div>}
 			</button>
 			{reversed.map((frame, index) => {
 				// Recursion repeats addresses, so frames are identified by position.
@@ -57,9 +58,9 @@ function CallStackView({ frames, pc, labels, hasProgram, halted, selectedFrame, 
 					onClick={() => onSelect(selectedFrame === frameIndex ? null : frameIndex)}
 				>
 					<div className="call-stack-name">#{index + 1} {describeAddress(frame.callAddress, labels)}</div>
-					<div>Call {formatAddress(frame.callAddress)}</div>
-					<div>Target {formatAddress(frame.targetAddress)}</div>
-					<div>Return {formatAddress(frame.returnAddress)}</div>
+					<div>Call <HexWord value={frame.callAddress} /></div>
+					<div>Target <HexWord value={frame.targetAddress} /></div>
+					<div>Return <HexWord value={frame.returnAddress} /></div>
 				</button>
 				)
 			})}
