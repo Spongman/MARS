@@ -605,7 +605,10 @@ export class MipsSimulator {
 		// Everything written from here on belongs to this instruction.
 		this.openEntry(this.pc, this.memory.get(this.pc >>> 2) ?? null, this.instructionAt(this.pc))
 
-		this.nextPc = (this.pc + 4) | 0
+		// Unsigned: a kernel handler sits above 0x80000000, and a signed increment
+		// turns its addresses negative, where nothing that keys on an address can
+		// find them.
+		this.nextPc = (this.pc + 4) >>> 0
 		try {
 			// An interrupt is taken in place of the instruction, not after it: EPC
 			// names the instruction, so returning from the handler runs it.  Inside
