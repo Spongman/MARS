@@ -1,6 +1,6 @@
 # THRAX Web Feature Architecture
 
-The original THRAX desktop application is a broad educational environment, not
+The original desktop application is a broad educational environment, not
 only an assembler. The web port will add its capabilities through stable
 boundaries rather than embedding simulator state in React components.
 
@@ -25,7 +25,7 @@ boundaries rather than embedding simulator state in React components.
 
 ## Delivery order
 
-| Phase | Original THRAX capabilities | Web deliverable |
+| Phase | Desktop capabilities | Web deliverable |
 | --- | --- | --- |
 | 1 | Assembler and interactive debugger | Source map, diagnostics, debug session, breakpoints, forward/back stepping, memory windows |
 | 2 | Core system services and processor views | Input/output, heap, files/browser storage, CP0/FP register models, display formats |

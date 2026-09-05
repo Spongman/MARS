@@ -21,9 +21,9 @@ A son of MARS (but in a different language). A modern, interactive web-based por
 - ✅ **Interactive Debugging**: Assemble, toggle source breakpoints, step, continue, and step back
 - ✅ **Call Stack View**: Inspect active `jal` / `jalr` calls while stepping
 - ✅ **Source Workspace**: Multiple source tabs and find/replace
-- ✅ **Portable Export**: Download assembled text in THRAX HexText format
+- ✅ **Portable Export**: Download assembled text in HexText format
 - ✅ **Bitmap Display**: Render word-addressed 24-bit RGB framebuffer memory
-- ✅ **Keyboard/Display MMIO**: Queue keyboard input and inspect transmitter output at the standard THRAX device addresses
+- ✅ **Keyboard/Display MMIO**: Queue keyboard input and inspect transmitter output at the standard MMIO device addresses
 - ✅ **Example Programs**: 8 ready-to-run MIPS programs
 - ✅ **Dark Theme UI**: VS Code-inspired interface
 
@@ -65,7 +65,7 @@ A son of MARS (but in a different language). A modern, interactive web-based por
 
 ### Memory-Mapped Keyboard and Display
 
-The Keyboard and Display Simulator uses the original THRAX MMIO addresses:
+The Keyboard and Display Simulator uses the standard MMIO addresses:
 `0xffff0000` receiver control, `0xffff0004` receiver data, `0xffff0008`
 transmitter control, and `0xffff000c` transmitter data. Receiver and
 transmitter readiness use bit 0. Reading receiver data consumes one queued
@@ -232,7 +232,7 @@ src/
 - [x] MIPS syntax highlighting
 
 ### In Progress 🔄
-- [x] Step-through debugging and backstepping
+- [x] Step-through debugging, stepping back, and rewinding to any point
 - [x] Breakpoint support
 - [x] Call stack viewer
 - [x] Bitmap display tool (24-bit RGB words, configurable base address)
@@ -249,14 +249,19 @@ src/
 - [x] Branch prediction in the pipeline (static, 1-bit, and 2-bit)
 - [x] Instruction statistics and branch prediction (BHT) tools
 - [x] MIPS X-Ray: the animated datapath, control unit, ALU control, and register bank, drawn as themed SVG
-- [x] Delayed branching, as THRAX's setting of the same name
+- [x] Delayed branching
 - [ ] Assembly program templates
 - [x] Save/load programs to browser storage
 - [x] Export machine code to HexText
 - [ ] Dark/light theme toggle
-- [ ] Keyboard shortcuts
+- [x] Keyboard shortcuts
 - [ ] Mobile responsive design
-- [x] Multiple source tabs (each tab assembles independently)
+- [x] Multiple source tabs, assembled together or one at a time
+- [x] Per-file symbol tables, with `.globl` naming what crosses a file
+- [x] The three MARS memory configurations
+- [x] Execution history: every instruction, what it changed, and time travel through it
+- [x] Editing registers and memory by hand, undoable like anything else
+- [x] Settings dialog covering the MARS options
 
 ### Future Enhancements 🚀
 - [ ] Collaborative editing
@@ -267,23 +272,24 @@ src/
 
 ## Feature Architecture
 
-The staged architecture for bringing the original THRAX capability set to the
+The staged architecture for bringing the full desktop capability set to the
 web port is documented in [docs/FEATURE_ARCHITECTURE.md](docs/FEATURE_ARCHITECTURE.md).
 
 ## 🐛 Known Limitations
 
 - Coprocessor 1 covers single and double precision arithmetic, conversion, comparison, and moves; the FCSR is modelled as the eight condition flags only, so rounding mode selection and exception enables are not configurable
-- Coprocessor 0 provides the vaddr/status/cause/epc registers, `mfc0`, `mtc0`, and `eret`. A `.ktext` handler at `0x80000180` receives traps; without one, a trap records its cause and EPC and stops execution
+- Coprocessor 0 provides the vaddr/status/cause/epc registers, `mfc0`, `mtc0`, and `eret`. A `.ktext` handler at the selected configuration's exception address receives traps; without one, a trap records its cause and EPC and stops execution
 - A label expression takes one label plus a constant (`arr+4`); differences of two labels are rejected
 - A text segment can be based only before it emits instructions, since pseudo-instructions expand after parsing
-- Syscall support is intentionally partial; unsupported syscall numbers stop safely with an error
-- Maximum 100,000 instruction execution limit (safety); execution yields between batches so runaway code does not block the page
-- Sparse virtual memory supports standard THRAX data and stack addresses; the inspector shows the first 100 initialized words
+- Every MARS syscall is implemented except the MIDI pair, 31 and 33, which keep their timing and play nothing; an unknown syscall number stops safely with an error
+- A run pauses after 1,000,000 instructions and can be continued; execution yields between batches so runaway code does not block the page
+- Sparse virtual memory covers the segments of the selected memory configuration. An address outside all of them faults, as does a load from or store into `.text` unless self-modifying code is enabled
+- The history keeps the last 100,000 instructions by default, at about 150 bytes each and no cost to the speed of a run; it can be set as high as 1,000,000. Stepping back past what it holds is not possible, and neither is replaying what came before it
 
 ## 📖 MIPS Reference
 
-For detailed MIPS instruction set reference, see the original THRAX documentation:
-- [THRAX Official Documentation](https://github.com/dpetersanderson/THRAX)
+For detailed MIPS instruction set reference, see the original MARS documentation:
+- [MARS Official Documentation](https://github.com/dpetersanderson/MARS)
 - [MIPS ISA Reference](https://en.wikipedia.org/wiki/MIPS_architecture)
 
 ## 🤝 Contributing
@@ -296,18 +302,18 @@ Contributions are welcome! Please feel free to:
 
 ## 📄 License
 
-MIT License - Same as the original THRAX simulator
+MIT License - Same as the original MARS simulator
 
-Original THRAX developed by Pete Sanderson and Ken Vollmar.
+Original MARS developed by Pete Sanderson and Ken Vollmar.
 Web port developed by Spongman.
 
-The X-Ray wire graph in `src/tools/xray/datapaths.ts` is generated from THRAX
+The X-Ray wire graph in `src/tools/xray/datapaths.ts` is generated from MARS
 4.5's datapath XML by `scripts/generate-xray-datapaths.py`.  The drawings
 themselves are redrawn as themed SVG rather than copied.
 
 ## 🙏 Acknowledgments
 
-- **Original THRAX**: Pete Sanderson and Ken Vollmar
+- **Original MARS**: Pete Sanderson and Ken Vollmar
 - **Monaco Editor**: Microsoft
 - **React**: Meta
 - **Zustand**: Poimandres
