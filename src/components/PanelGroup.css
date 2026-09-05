@@ -1,0 +1,40 @@
+.panel-group {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	overflow: hidden;
+	background: var(--surface-base);
+}
+
+.panel-group-title {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	background: var(--surface-overlay);
+	padding: 4px 8px 4px 12px;
+	font-weight: 600;
+	font-size: 12px;
+	color: var(--accent);
+	border-bottom: 1px solid var(--border);
+}
+
+.panel-group-body {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 8px 12px;
+}
+
+/* A list or a table draws to the edges of the box and rules its own rows. */
+.panel-group-flush {
+	display: block;
+	padding: 0;
+}
+
+/* The box draws the border; what it holds edge to edge does not draw another.
+   Named through the box so this outweighs the child's own rule whichever of the
+   two stylesheets the bundler puts first. */
+.panel-group > .panel-group-flush > * {
+	border-width: 0;
+	border-radius: 0;
+}

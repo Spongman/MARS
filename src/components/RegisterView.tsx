@@ -5,6 +5,7 @@ import { formatWord } from '../core/format'
 import type { CoprocessorState, Registers } from '../core/types'
 import { advanceOne, isSolo, nextToggles } from './toggleGroup'
 import FloatBitsView from './FloatBitsView'
+import PanelGroup from './PanelGroup'
 import HexNumber from './HexNumber'
 import EditableCell from './EditableCell'
 import { parseEditedDouble, parseEditedValue } from './editValue'
@@ -187,9 +188,10 @@ function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect, on
 	const columnWidth = nameWidth + 24 + formats.reduce((total, format) => total + FORMAT_WIDTHS[format] + 8, 0)
 
 	return (
-		<div className="register-group">
-			<div className="group-title">
-				<span>{title}</span>
+		<PanelGroup
+			title={title}
+			flush
+			actions={(
 				<div className="format-toggles">
 					{FORMATS.filter((format) => available.includes(format.id)).map((format) => (
 						<button
@@ -202,7 +204,8 @@ function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect, on
 						</button>
 					))}
 				</div>
-			</div>
+			)}
+		>
 			<div className="register-list" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${columnWidth}px, 1fr))` }}>
 				{entries.map((entry) => (
 					<div
@@ -276,7 +279,7 @@ function RegisterPanel({ title, entries, flags, onToggle, selected, onSelect, on
 					</div>
 				))}
 			</div>
-		</div>
+		</PanelGroup>
 	)
 }
 
@@ -373,8 +376,7 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers, 
 
 			{tab === 'coproc1' && (
 				<>
-					<div className="register-group">
-						<div className="group-title"><span>Condition Flags</span></div>
+					<PanelGroup title="Condition Flags" flush>
 						<div className="register-list">
 							{fpConditionFlags.map((flag, index) => (
 								<div key={index} className="register-item register-item-flag">
@@ -383,7 +385,7 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers, 
 								</div>
 							))}
 						</div>
-					</div>
+					</PanelGroup>
 
 					<RegisterPanel
 						title={FLOATING_POINT}
@@ -411,18 +413,17 @@ function RegisterView({ registers, fpRegisters, fpConditionFlags, cp0Registers, 
 					/>
 
 					{selectedFp !== null && (
-						<div className="register-group">
-							<div className="group-title">
-								<span>{`$f${selectedFp}${fpDouble ? `/$f${selectedFp + 1}` : ''} bits`}</span>
-								<button className="format-toggle" title="Clear selection" onClick={() => setSelectedRegister(null)}>×</button>
-							</div>
+						<PanelGroup
+							title={`$f${selectedFp}${fpDouble ? `/$f${selectedFp + 1}` : ''} bits`}
+							actions={<button className="format-toggle" title="Clear selection" onClick={() => setSelectedRegister(null)}>×</button>}
+						>
 							<FloatBitsView
 								bits={fpRegisters[selectedFp] >>> 0}
 								highBits={fpDouble ? fpRegisters[selectedFp + 1] >>> 0 : undefined}
 								editable={editable}
 								onEdit={onEdit && ((bits, high) => onEdit({ name: `$f${selectedFp}`, bits }, bits, high))}
 							/>
-						</div>
+						</PanelGroup>
 					)}
 				</>
 			)}

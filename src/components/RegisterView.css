@@ -4,25 +4,6 @@
 	gap: 12px;
 }
 
-.register-group {
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	overflow: hidden;
-}
-
-.group-title {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-	background: var(--surface-overlay);
-	padding: 4px 8px 4px 12px;
-	font-weight: 600;
-	font-size: 12px;
-	color: var(--accent);
-	border-bottom: 1px solid var(--border);
-}
-
 /* Wide panels flow the entries into as many columns as fit. */
 .register-list {
 	display: grid;
@@ -146,11 +127,9 @@
 	background: var(--accent-surface);
 }
 
-/* The float-bits readout sits inside a register group, so it neither fills the
-   panel nor scrolls on its own the way a docked tool does. */
+/* The float-bits readout sits inside a register group, which pads it, rather
+   than filling a panel the way a docked tool does. */
 .float-bits {
-	height: auto;
-	overflow: visible;
-	padding: 10px 12px;
+	min-height: 0;
 	background: var(--surface-base);
 }
