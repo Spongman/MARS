@@ -52,14 +52,16 @@ function MainMenu({ onSettings, onLoadExample, onOpenPanel, openPanels }: MainMe
 	 * A panel to open.  A tool carries the line that says what it watches, since
 	 * this menu is where one is chosen and there is no page about them any more.
 	 */
-	const panelItem = (panel: PanelSpec) => {
+	const panelItem = (panel: PanelSpec, keepOpen = false) => {
 		const shown = openPanels.includes(panel.id)
 		return (
 			<button
 				key={panel.id}
 				className={`menu-item menu-item-tick${panel.description ? ' menu-item-described' : ''}`}
 				role="menuitem"
-				onClick={() => { onOpenPanel(panel.id); close() }}
+				// The tools are picked over rather than picked from, so that list stays
+				// up and the ticks answer as they are toggled.
+				onClick={() => { onOpenPanel(panel.id); if (!keepOpen) close() }}
 				// Already open still selects it: the tab may be behind another.
 				title={shown ? `${menuLabel(panel)} is open; bring it forward` : `Open ${menuLabel(panel)}`}
 			>
@@ -130,8 +132,8 @@ function MainMenu({ onSettings, onLoadExample, onOpenPanel, openPanels }: MainMe
 						</button>
 					)), true)}
 
-					{section('window', 'Window', panelsIn('window').map(panelItem))}
-					{section('tools', 'Tools', panelsIn('tool').map(panelItem), true)}
+					{section('window', 'Window', panelsIn('window').map((panel) => panelItem(panel)))}
+					{section('tools', 'Tools', panelsIn('tool').map((panel) => panelItem(panel, true)), true)}
 				</div>
 			)}
 		</div>
