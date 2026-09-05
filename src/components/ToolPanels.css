@@ -119,6 +119,11 @@
 	font-style: italic;
 }
 
+/* Standing in for a list, it needs the room the list would have had. */
+.panel-group > .panel-group-flush > .tool-empty {
+	padding: 8px 12px;
+}
+
 .tool-blocks {
 	display: flex;
 	flex-wrap: wrap;
@@ -250,3 +255,7 @@
 	opacity: 0.6;
 	margin-top: 6px;
 }
+
+/* The group holding a tool's one scrolling or scaling surface stretches with it. */
+.tool-group-fills { display: flex; flex-direction: column; flex: 1; min-height: 0 }
+.tool-group-fills > .panel-group-body { flex: 1; min-height: 0 }

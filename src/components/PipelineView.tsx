@@ -1,6 +1,7 @@
 import { formatWord } from '../core/format'
 import { REGISTER_NAMES } from '../core/registers'
 import type { BranchResolution, DataHazardPolicy, JumpResolution, PipelineRow, PipelineSettings, PipelineSnapshot, PredictionScheme } from '../tools/pipeline'
+import PanelGroup from './PanelGroup'
 import './ToolPanels.css'
 
 interface Props {
@@ -140,38 +141,40 @@ function PipelineView({ pipeline, settings, onChange }: Props) {
 				)}
 			</div>
 
-			{rows.length === 0 ? (
-				<div className="tool-empty">Run or step a program to see it flow through the pipeline.</div>
-			) : (
-				<div className="pipeline-scroll">
-					<table className="pipeline-grid">
-						<thead>
-							<tr>
-								<th className="pipeline-label">Instruction</th>
-								{columns.map((cycle) => <th key={cycle} className="pipeline-cycle">{cycle}</th>)}
-							</tr>
-						</thead>
-						<tbody>
-							{rows.map((row) => (
-								<tr key={row.index} className={row.stalls > 0 ? 'pipeline-row-stalled' : undefined}>
-									<th className="pipeline-label" title={[formatWord(row.address), describeStall(row), describePrediction(row)].filter(Boolean).join('\n')}>
-										{row.op.toLowerCase()}
-										{row.mispredicted && <span className="pipeline-mispredict" title="Mispredicted"> ✗</span>}
-									</th>
-									{columns.map((cycle) => {
-										const cell = cellFor(row, cycle)
-										return (
-											<td key={cycle} className={cell ? `pipeline-stage pipeline-${cell.kind}` : 'pipeline-stage'}>
-												{cell?.label ?? ''}
-											</td>
-										)
-									})}
+			<PanelGroup title="Timeline" flush className="tool-group-fills">
+				{rows.length === 0 ? (
+					<div className="tool-empty">Run or step a program to see it flow through the pipeline.</div>
+				) : (
+					<div className="pipeline-scroll">
+						<table className="pipeline-grid">
+							<thead>
+								<tr>
+									<th className="pipeline-label">Instruction</th>
+									{columns.map((cycle) => <th key={cycle} className="pipeline-cycle">{cycle}</th>)}
 								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-			)}
+							</thead>
+							<tbody>
+								{rows.map((row) => (
+									<tr key={row.index} className={row.stalls > 0 ? 'pipeline-row-stalled' : undefined}>
+										<th className="pipeline-label" title={[formatWord(row.address), describeStall(row), describePrediction(row)].filter(Boolean).join('\n')}>
+											{row.op.toLowerCase()}
+											{row.mispredicted && <span className="pipeline-mispredict" title="Mispredicted"> ✗</span>}
+										</th>
+										{columns.map((cycle) => {
+											const cell = cellFor(row, cycle)
+											return (
+												<td key={cycle} className={cell ? `pipeline-stage pipeline-${cell.kind}` : 'pipeline-stage'}>
+													{cell?.label ?? ''}
+												</td>
+											)
+										})}
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				)}
+			</PanelGroup>
 		</div>
 	)
 }

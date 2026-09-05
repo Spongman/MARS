@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { parseWord } from '../core/format'
 import type { MemoryView } from '../core/types'
 import { isOneOf, useStoredState } from '../hooks/useStoredState'
+import PanelGroup from './PanelGroup'
 import './BitmapDisplay.css'
 
 interface BitmapDisplayProps {
@@ -48,11 +49,13 @@ function BitmapDisplay({ memory }: BitmapDisplayProps) {
 
 	return (
 		<div className="bitmap-display">
-			{parsedBaseAddress === null ? (
-				<div className="bitmap-error">Enter a 32-bit decimal or hexadecimal base address.</div>
-			) : (
-				<canvas className="bitmap-canvas" ref={canvasRef} aria-label="Bitmap display" />
-			)}
+			<PanelGroup title="Framebuffer" flush>
+				{parsedBaseAddress === null ? (
+					<div className="bitmap-error">Enter a 32-bit decimal or hexadecimal base address.</div>
+				) : (
+					<canvas className="bitmap-canvas" ref={canvasRef} aria-label="Bitmap display" />
+				)}
+			</PanelGroup>
 			<div className="bitmap-controls">
 				<label>
 					Base address

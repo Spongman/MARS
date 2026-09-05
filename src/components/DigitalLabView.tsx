@@ -1,6 +1,7 @@
 import React from 'react'
 import './DigitalLabView.css'
 import { COUNTER_PERIOD, type DigitalLabState } from '../tools/digitalLab'
+import PanelGroup from './PanelGroup'
 
 /** Where each of the seven segments sits, as a fraction of the display box. */
 const SEGMENT_SHAPES: Array<{ bit: number, points: string }> = [
@@ -39,36 +40,42 @@ interface DigitalLabViewProps {
 function DigitalLabView({ state, onPressKey }: DigitalLabViewProps) {
 	return (
 		<div className="digital-lab">
-			<div className="lab-displays">
-				{/* The left display is the high byte, so it is drawn first. */}
-				<SevenSegment bits={state.displays[1]} />
-				<SevenSegment bits={state.displays[0]} />
-			</div>
+			<PanelGroup title="Displays">
+				<div className="lab-displays">
+					{/* The left display is the high byte, so it is drawn first. */}
+					<SevenSegment bits={state.displays[1]} />
+					<SevenSegment bits={state.displays[0]} />
+				</div>
+			</PanelGroup>
 
-			<div className="lab-keypad">
-				{Array.from({ length: 16 }, (unused, key) => (
-					<button
-						key={key}
-						type="button"
-						className={`lab-key${state.pressedKey === key ? ' held' : ''}`}
-						title={`Key ${key.toString(16).toUpperCase()}`}
-						onClick={() => onPressKey(state.pressedKey === key ? null : key)}
-					>
-						{key.toString(16).toUpperCase()}
-					</button>
-				))}
-			</div>
+			<PanelGroup title="Keypad">
+				<div className="lab-keypad">
+					{Array.from({ length: 16 }, (unused, key) => (
+						<button
+							key={key}
+							type="button"
+							className={`lab-key${state.pressedKey === key ? ' held' : ''}`}
+							title={`Key ${key.toString(16).toUpperCase()}`}
+							onClick={() => onPressKey(state.pressedKey === key ? null : key)}
+						>
+							{key.toString(16).toUpperCase()}
+						</button>
+					))}
+				</div>
+			</PanelGroup>
 
-			<dl className="lab-readout">
-				<dt>row</dt>
-				<dd>0x{(state.keypadRow & 0xff).toString(16).padStart(2, '0')}</dd>
-				<dt>reads</dt>
-				<dd>0x{(state.keypadOut & 0xff).toString(16).padStart(2, '0')}</dd>
-				<dt>counter</dt>
-				<dd>{state.counterEnabled ? `${state.counterRemaining}/${COUNTER_PERIOD}` : 'off'}</dd>
-				<dt>interrupts</dt>
-				<dd>{state.timerInterrupts} timer, {state.keypadInterrupts} keypad</dd>
-			</dl>
+			<PanelGroup title="Readout">
+				<dl className="lab-readout">
+					<dt>row</dt>
+					<dd>0x{(state.keypadRow & 0xff).toString(16).padStart(2, '0')}</dd>
+					<dt>reads</dt>
+					<dd>0x{(state.keypadOut & 0xff).toString(16).padStart(2, '0')}</dd>
+					<dt>counter</dt>
+					<dd>{state.counterEnabled ? `${state.counterRemaining}/${COUNTER_PERIOD}` : 'off'}</dd>
+					<dt>interrupts</dt>
+					<dd>{state.timerInterrupts} timer, {state.keypadInterrupts} keypad</dd>
+				</dl>
+			</PanelGroup>
 
 			<p className="lab-help">
 				A key stays held until it is clicked again, so a scan of its row finds it.

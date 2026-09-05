@@ -1,5 +1,6 @@
 import type { ScavengerHuntSnapshot } from '../tools/scavengerHunt'
 import { ADMINISTRATOR_ID, GRAPHIC_HEIGHT, GRAPHIC_WIDTH, NUM_LOCATIONS } from '../tools/scavengerHunt'
+import PanelGroup from './PanelGroup'
 import './ToolPanels.css'
 import './ScavengerHuntView.css'
 
@@ -42,45 +43,49 @@ function ScavengerHuntView({ scavengerHunt }: Props) {
 				)}
 			</div>
 
-			<svg className="scavenger-hunt-board" viewBox={`0 0 ${GRAPHIC_WIDTH} ${GRAPHIC_HEIGHT}`} preserveAspectRatio="xMidYMid meet">
-				{locations.map((location, index) => (
-					<g key={index} className="scavenger-hunt-location">
-						<rect x={location.x} y={location.y} width={20} height={20} />
-						<text x={location.x + 4} y={location.y + 15}>{index}</text>
-					</g>
-				))}
-				{players.map((player) => (
-					<g key={player.id} className="scavenger-hunt-player" style={{ color: colorFor(player.id, player.color) }}>
-						<circle cx={player.x} cy={player.y} r={10} />
-						<text x={player.x + 4} y={player.y + 15}>{player.id}</text>
-					</g>
-				))}
-			</svg>
+			<PanelGroup title="Board" flush>
+				<svg className="scavenger-hunt-board" viewBox={`0 0 ${GRAPHIC_WIDTH} ${GRAPHIC_HEIGHT}`} preserveAspectRatio="xMidYMid meet">
+					{locations.map((location, index) => (
+						<g key={index} className="scavenger-hunt-location">
+							<rect x={location.x} y={location.y} width={20} height={20} />
+							<text x={location.x + 4} y={location.y + 15}>{index}</text>
+						</g>
+					))}
+					{players.map((player) => (
+						<g key={player.id} className="scavenger-hunt-player" style={{ color: colorFor(player.id, player.color) }}>
+							<circle cx={player.x} cy={player.y} r={10} />
+							<text x={player.x + 4} y={player.y + 15}>{player.id}</text>
+						</g>
+					))}
+				</svg>
+			</PanelGroup>
 
-			<div className="scavenger-hunt-scoreboard">
-				<table>
-					<thead>
-						<tr>
-							<th>Player</th>
-							<th className="numeric">Energy</th>
-							<th>Visited</th>
-							<th>Status</th>
-						</tr>
-					</thead>
-					<tbody>
-						{players.map((player) => (
-							<tr key={player.id} className={player.finished ? '' : 'tool-row-idle'}>
-								<td>{player.id}</td>
-								<td className="numeric">{player.energy}</td>
-								<td>{player.visited.filter(Boolean).length}/{NUM_LOCATIONS}</td>
-								<td>{player.finished ? `Finished @${player.finishedAtInstruction}` : '-'}</td>
+			<PanelGroup title="Scoreboard" flush>
+				<div className="scavenger-hunt-scoreboard">
+					<table>
+						<thead>
+							<tr>
+								<th>Player</th>
+								<th className="numeric">Energy</th>
+								<th>Visited</th>
+								<th>Status</th>
 							</tr>
-						))}
-					</tbody>
-				</table>
-			</div>
+						</thead>
+						<tbody>
+							{players.map((player) => (
+								<tr key={player.id} className={player.finished ? '' : 'tool-row-idle'}>
+									<td>{player.id}</td>
+									<td className="numeric">{player.energy}</td>
+									<td>{player.visited.filter(Boolean).length}/{NUM_LOCATIONS}</td>
+									<td>{player.finished ? `Finished @${player.finishedAtInstruction}` : '-'}</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
 
-			{!gameOn && <div className="tool-empty">Waiting for the administrator to write GAME_ON (0xffffe008).</div>}
+				{!gameOn && <div className="tool-empty">Waiting for the administrator to write GAME_ON (0xffffe008).</div>}
+			</PanelGroup>
 		</div>
 	)
 }

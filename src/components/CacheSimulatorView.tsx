@@ -1,4 +1,5 @@
 import type { CacheSettings, CacheSnapshot, ReplacementPolicy } from '../tools/cache'
+import PanelGroup from './PanelGroup'
 import './ToolPanels.css'
 
 interface Props {
@@ -67,16 +68,17 @@ function CacheSimulatorView({ cache, settings, onChange }: Props) {
 				</div>
 			</div>
 
-			<div className="tool-bar-row">
-				<span>Hit rate</span>
-				<div className="tool-bar-track">
-					<div className="tool-bar-fill" style={{ width: `${cache.hitRate * 100}%` }} />
+			<PanelGroup title="Hit rate">
+				<div className="tool-bar-row">
+					<span>Hit rate</span>
+					<div className="tool-bar-track">
+						<div className="tool-bar-fill" style={{ width: `${cache.hitRate * 100}%` }} />
+					</div>
+					<span className="tool-bar-value">{cache.hits}/{cache.accesses}</span>
 				</div>
-				<span className="tool-bar-value">{cache.hits}/{cache.accesses}</span>
-			</div>
+			</PanelGroup>
 
-			<div>
-				<div className="tool-metric-label">Blocks in use</div>
+			<PanelGroup title="Blocks in use">
 				<div className="tool-blocks">
 					{cache.blocks.map((block, index) => (
 						<div
@@ -86,9 +88,9 @@ function CacheSimulatorView({ cache, settings, onChange }: Props) {
 						/>
 					))}
 				</div>
-			</div>
 
-			{cache.accesses === 0 && <div className="tool-empty">Run a program that touches memory.</div>}
+				{cache.accesses === 0 && <div className="tool-empty">Run a program that touches memory.</div>}
+			</PanelGroup>
 		</div>
 	)
 }

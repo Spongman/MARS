@@ -1,4 +1,5 @@
 import { CATEGORY_LABELS, FORMAT_LABELS, type InstructionCategory, type InstructionFormat, type StatisticsSnapshot } from '../tools/statistics'
+import PanelGroup from './PanelGroup'
 import './ToolPanels.css'
 
 interface Props {
@@ -24,8 +25,7 @@ function InstructionStatisticsView({ statistics }: Props) {
 				</div>
 			</div>
 
-			<div className="tool-section-title">By format</div>
-			<div>
+			<PanelGroup title="By format">
 				{FORMATS.map((encoding) => {
 					const count = byFormat[encoding]
 					const share = total === 0 ? 0 : count / total
@@ -39,10 +39,9 @@ function InstructionStatisticsView({ statistics }: Props) {
 						</div>
 					)
 				})}
-			</div>
+			</PanelGroup>
 
-			<div className="tool-section-title">By kind</div>
-			<div>
+			<PanelGroup title="By kind">
 				{CATEGORIES.map((category) => {
 					const count = byCategory[category]
 					const share = total === 0 ? 0 : count / total
@@ -56,30 +55,32 @@ function InstructionStatisticsView({ statistics }: Props) {
 						</div>
 					)
 				})}
-			</div>
+			</PanelGroup>
 
-			{byMnemonic.length === 0 ? (
-				<div className="tool-empty">Run a program to collect statistics.</div>
-			) : (
-				<table>
-					<thead>
-						<tr>
-							<th>Instruction</th>
-							<th className="numeric">Count</th>
-							<th className="numeric">Share</th>
-						</tr>
-					</thead>
-					<tbody>
-						{byMnemonic.map((entry) => (
-							<tr key={entry.op}>
-								<td>{entry.op.toLowerCase()}</td>
-								<td className="numeric">{entry.count.toLocaleString()}</td>
-								<td className="numeric">{((entry.count / total) * 100).toFixed(1)}%</td>
+			<PanelGroup title="By instruction" flush>
+				{byMnemonic.length === 0 ? (
+					<div className="tool-empty">Run a program to collect statistics.</div>
+				) : (
+					<table>
+						<thead>
+							<tr>
+								<th>Instruction</th>
+								<th className="numeric">Count</th>
+								<th className="numeric">Share</th>
 							</tr>
-						))}
-					</tbody>
-				</table>
-			)}
+						</thead>
+						<tbody>
+							{byMnemonic.map((entry) => (
+								<tr key={entry.op}>
+									<td>{entry.op.toLowerCase()}</td>
+									<td className="numeric">{entry.count.toLocaleString()}</td>
+									<td className="numeric">{((entry.count / total) * 100).toFixed(1)}%</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				)}
+			</PanelGroup>
 		</div>
 	)
 }

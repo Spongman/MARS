@@ -1,4 +1,5 @@
 import type { MarsBotSnapshot } from '../tools/marsBot'
+import PanelGroup from './PanelGroup'
 import './ToolPanels.css'
 import './MarsBotView.css'
 
@@ -49,25 +50,27 @@ function MarsBotView({ marsBot }: Props) {
 				</div>
 			</div>
 
-			<svg className="mars-bot-canvas" viewBox={`${minX} ${minY} ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
-				{segments.map((segment, index) => (
-					<line
-						key={index}
-						className="mars-bot-track"
-						x1={segment.from.x}
-						y1={segment.from.y}
-						x2={segment.to.x}
-						y2={segment.to.y}
+			<PanelGroup title="Position" flush>
+				<svg className="mars-bot-canvas" viewBox={`${minX} ${minY} ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
+					{segments.map((segment, index) => (
+						<line
+							key={index}
+							className="mars-bot-track"
+							x1={segment.from.x}
+							y1={segment.from.y}
+							x2={segment.to.x}
+							y2={segment.to.y}
+						/>
+					))}
+					<polygon
+						className="mars-bot-body"
+						points={botTriangle(x, y)}
+						transform={`rotate(${heading}, ${x}, ${y})`}
 					/>
-				))}
-				<polygon
-					className="mars-bot-body"
-					points={botTriangle(x, y)}
-					transform={`rotate(${heading}, ${x}, ${y})`}
-				/>
-			</svg>
+				</svg>
 
-			{segments.length === 0 && <div className="tool-empty">Write MOVE and LEAVETRACK to 0xffff8050 / 0xffff8020 to draw a trail.</div>}
+				{segments.length === 0 && <div className="tool-empty">Write MOVE and LEAVETRACK to 0xffff8050 / 0xffff8020 to draw a trail.</div>}
+			</PanelGroup>
 		</div>
 	)
 }

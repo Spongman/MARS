@@ -11,6 +11,7 @@ import type { XrayDiagram } from '../tools/xray/datapaths'
 import { svgPathOf, XRAY_DRAWINGS } from '../tools/xray/blocks'
 import type { XrayBlock } from '../tools/xray/blocks'
 import { isOneOf, useStoredState } from '../hooks/useStoredState'
+import PanelGroup from './PanelGroup'
 import './MipsXrayView.css'
 
 interface Props {
@@ -179,13 +180,18 @@ function MipsXrayView({ memory, pc }: Props) {
 						{SPEEDS.map((value) => <option key={value} value={value}>{value}x</option>)}
 					</select>
 				</label>
-				<button className="btn btn-secondary" onClick={() => { animation.reset(); setFrame((frame) => frame + 1) }}>Replay</button>
 				<span className="xray-instruction">
 					{formatWord(pc)}
 					{text ? ` ${text}` : ' (no instruction)'}
 				</span>
 			</div>
 
+			<PanelGroup
+				title="Diagram"
+				flush
+				className="tool-group-fills"
+				actions={<button className="btn btn-secondary" onClick={() => { animation.reset(); setFrame((frame) => frame + 1) }}>Replay</button>}
+			>
 			<div className="xray-scroll">
 				<svg
 					className="xray-drawing"
@@ -264,6 +270,7 @@ function MipsXrayView({ memory, pc }: Props) {
 					))}
 				</svg>
 			</div>
+			</PanelGroup>
 		</div>
 	)
 }

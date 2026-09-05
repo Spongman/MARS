@@ -1,5 +1,6 @@
 import React from 'react'
 import type { KeyboardDisplayState } from '../core/types'
+import PanelGroup from './PanelGroup'
 import './KeyboardDisplayTool.css'
 
 interface KeyboardDisplayToolProps {
@@ -31,24 +32,33 @@ function KeyboardDisplayTool({ device, onSend }: KeyboardDisplayToolProps) {
 		<p className="keyboard-display-help">
 			MMIO: receiver control/data <code>0xffff0000</code>/<code>0xffff0004</code>; transmitter control/data <code>0xffff0008</code>/<code>0xffff000c</code>.
 		</p>
-		<div className="keyboard-display-status">
-			<span>Receiver: {device.queuedInput ? `ready (${device.queuedInput.length} queued)` : 'empty'}</span>
-			<span>Transmitter: ready</span>
-		</div>
-		<label htmlFor="keyboard-display-output">Display</label>
-		<pre id="keyboard-display-output" className="keyboard-display-output" ref={outputRef}>
-			{device.displayOutput || 'Program MMIO output will appear here'}
-		</pre>
-		<form className="keyboard-display-input" onSubmit={send}>
-			<label htmlFor="keyboard-display-input">Keyboard input</label>
-			<input
-				id="keyboard-display-input"
-				value={input}
-				onChange={(event) => setInput(event.target.value)}
-				placeholder="Characters to queue"
-			/>
-			<button type="submit">Queue</button>
-		</form>
+
+		<PanelGroup title="Status">
+			<div className="keyboard-display-status">
+				<span>Receiver: {device.queuedInput ? `ready (${device.queuedInput.length} queued)` : 'empty'}</span>
+				<span>Transmitter: ready</span>
+			</div>
+		</PanelGroup>
+
+		<PanelGroup title="Display" flush>
+			<label htmlFor="keyboard-display-output">Display</label>
+			<pre id="keyboard-display-output" className="keyboard-display-output" ref={outputRef}>
+				{device.displayOutput || 'Program MMIO output will appear here'}
+			</pre>
+		</PanelGroup>
+
+		<PanelGroup title="Input">
+			<form className="keyboard-display-input" onSubmit={send}>
+				<label htmlFor="keyboard-display-input">Keyboard input</label>
+				<input
+					id="keyboard-display-input"
+					value={input}
+					onChange={(event) => setInput(event.target.value)}
+					placeholder="Characters to queue"
+				/>
+				<button type="submit">Queue</button>
+			</form>
+		</PanelGroup>
 		</section>
 	)
 }

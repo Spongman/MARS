@@ -1,6 +1,7 @@
 import { formatWord } from '../core/format'
 import { colorForCount } from '../tools/memoryReference'
 import type { MemoryReferenceSettings, MemoryReferenceSnapshot } from '../tools/memoryReference'
+import PanelGroup from './PanelGroup'
 import './ToolPanels.css'
 import './MemoryReferenceView.css'
 
@@ -79,30 +80,34 @@ function MemoryReferenceView({ memoryReference, settings, onChange }: Props) {
 				</div>
 			</div>
 
-			<div
-				className="memory-reference-grid"
-				style={{ gridTemplateColumns: `repeat(${columns}, ${settings.unitPixelWidth}px)`, gridAutoRows: `${settings.unitPixelHeight}px` }}
-			>
-				{counts.map((count, index) => (
-					<div
-						key={index}
-						className="memory-reference-cell"
-						style={{ background: colorForCount(count, settings.colorRamp) }}
-						title={`${formatWord(settings.baseAddress + index * settings.wordsPerUnit * 4)}: ${count}`}
-					/>
-				))}
-			</div>
+			<PanelGroup title="Heat map" flush>
+				<div
+					className="memory-reference-grid"
+					style={{ gridTemplateColumns: `repeat(${columns}, ${settings.unitPixelWidth}px)`, gridAutoRows: `${settings.unitPixelHeight}px` }}
+				>
+					{counts.map((count, index) => (
+						<div
+							key={index}
+							className="memory-reference-cell"
+							style={{ background: colorForCount(count, settings.colorRamp) }}
+							title={`${formatWord(settings.baseAddress + index * settings.wordsPerUnit * 4)}: ${count}`}
+						/>
+					))}
+				</div>
+			</PanelGroup>
 
-			<div className="memory-reference-legend">
-				{settings.colorRamp.map((stop, index) => (
-					<span key={stop.count} className="memory-reference-swatch">
-						<span className="memory-reference-swatch-color" style={{ background: stop.color }} />
-						{stop.count}{index < settings.colorRamp.length - 1 ? `-${settings.colorRamp[index + 1].count - 1}` : '+'}
-					</span>
-				))}
-			</div>
+			<PanelGroup title="Legend">
+				<div className="memory-reference-legend">
+					{settings.colorRamp.map((stop, index) => (
+						<span key={stop.count} className="memory-reference-swatch">
+							<span className="memory-reference-swatch-color" style={{ background: stop.color }} />
+							{stop.count}{index < settings.colorRamp.length - 1 ? `-${settings.colorRamp[index + 1].count - 1}` : '+'}
+						</span>
+					))}
+				</div>
 
-			{max === 0 && <div className="tool-empty">Run a program that touches memory.</div>}
+				{max === 0 && <div className="tool-empty">Run a program that touches memory.</div>}
+			</PanelGroup>
 		</div>
 	)
 }

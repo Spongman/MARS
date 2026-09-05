@@ -1,5 +1,6 @@
 import { formatWord } from '../core/format'
 import type { BranchHistorySettings, BranchHistorySnapshot } from '../tools/branchHistory'
+import PanelGroup from './PanelGroup'
 import './ToolPanels.css'
 
 interface Props {
@@ -59,34 +60,36 @@ function BranchHistoryView({ branchHistory, settings, onChange }: Props) {
 				</div>
 			</div>
 
-			{predictions === 0 ? (
-				<div className="tool-empty">Run a program with a conditional branch.</div>
-			) : (
-				<table>
-					<thead>
-						<tr>
-							<th>#</th>
-							<th>Branch</th>
-							<th>State</th>
-							<th>Predicts</th>
-							<th className="numeric">Seen</th>
-							<th className="numeric">Correct</th>
-						</tr>
-					</thead>
-					<tbody>
-						{entries.map((entry) => (
-							<tr key={entry.index} className={entry.predictions === 0 ? 'tool-row-idle' : undefined}>
-								<td>{entry.index}</td>
-								<td>{entry.addresses.map(formatWord).join(' ') || '-'}</td>
-								<td>{stateLabel(entry.state, settings.historyBits)}</td>
-								<td>{entry.predictTaken ? 'taken' : 'not taken'}</td>
-								<td className="numeric">{entry.predictions}</td>
-								<td className="numeric">{entry.predictions === 0 ? '-' : `${((entry.correct / entry.predictions) * 100).toFixed(0)}%`}</td>
+			<PanelGroup title="Predictions" flush>
+				{predictions === 0 ? (
+					<div className="tool-empty">Run a program with a conditional branch.</div>
+				) : (
+					<table>
+						<thead>
+							<tr>
+								<th>#</th>
+								<th>Branch</th>
+								<th>State</th>
+								<th>Predicts</th>
+								<th className="numeric">Seen</th>
+								<th className="numeric">Correct</th>
 							</tr>
-						))}
-					</tbody>
-				</table>
-			)}
+						</thead>
+						<tbody>
+							{entries.map((entry) => (
+								<tr key={entry.index} className={entry.predictions === 0 ? 'tool-row-idle' : undefined}>
+									<td>{entry.index}</td>
+									<td>{entry.addresses.map(formatWord).join(' ') || '-'}</td>
+									<td>{stateLabel(entry.state, settings.historyBits)}</td>
+									<td>{entry.predictTaken ? 'taken' : 'not taken'}</td>
+									<td className="numeric">{entry.predictions}</td>
+									<td className="numeric">{entry.predictions === 0 ? '-' : `${((entry.correct / entry.predictions) * 100).toFixed(0)}%`}</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				)}
+			</PanelGroup>
 		</div>
 	)
 }
