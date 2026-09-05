@@ -1,10 +1,5 @@
 .memory-view {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
 	height: 100%;
-	padding: 10px;
-	box-sizing: border-box;
 	position: relative;
 }
 
@@ -16,7 +11,7 @@
 	font-size: 12px;
 }
 
-.memory-sections,
+.memory-toolbar-row,
 .memory-controls {
 	display: flex;
 	flex-wrap: wrap;
@@ -24,9 +19,9 @@
 	gap: 4px;
 }
 
-.memory-section,
 .memory-group-size,
-.memory-go {
+.memory-go,
+.memory-options {
 	padding: 3px 8px;
 	background: var(--surface-input);
 	border: 1px solid var(--border-strong);
@@ -37,14 +32,14 @@
 	font-family: 'Courier New', monospace;
 }
 
-.memory-section:hover,
 .memory-group-size:hover,
-.memory-go:hover {
+.memory-go:hover,
+.memory-options:hover {
 	background: var(--border-strong);
 }
 
-.memory-section.active,
-.memory-group-size.active {
+.memory-group-size.active,
+.memory-options.active {
 	background: var(--accent);
 	border-color: var(--accent);
 	color: white;
@@ -55,10 +50,12 @@
 	gap: 2px;
 }
 
-.memory-group-size {
+.memory-group-size,
+.memory-options {
 	min-width: 26px;
 }
 
+/* Joined groups: the sections, and the row-shape toggles. */
 .memory-toggles {
 	display: flex;
 }
@@ -115,16 +112,28 @@
 	font-size: 12px;
 }
 
+/* The panel itself, so the scrollbar runs its whole height. */
 .memory-grid {
-	/* clip-path makes this element the containing block for the fixed rows below
-	   and clips them to the grid, which overflow alone cannot do. */
+	/* clip-path makes this element the containing block for the fixed rows and the
+	   toolbar below, and clips them to the grid, which overflow alone cannot do. */
 	clip-path: inset(0);
-	flex: 1;
-	min-height: 0;
-	overflow: auto;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
+	height: 100%;
+	overflow-x: auto;
+	overflow-y: scroll;
 	background: var(--surface-base);
+}
+
+/* Pinned to the top of the grid, over the rows scrolling under it.  One line
+   deep as it stands: the row-shape options are behind the hamburger. */
+.memory-toolbar {
+	position: fixed;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 10px;
+	background: var(--surface-base);
+	border-bottom: 1px solid var(--border);
 }
 
 .memory-scroll {

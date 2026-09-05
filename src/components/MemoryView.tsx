@@ -267,6 +267,14 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 	// The ASCII column changes the frame without resizing the grid.
 	const { ref: scrollRef, originRef, viewport, scrollTop, frame, onScroll } = useFixedRowScroller(ROW_HEIGHT, [showAscii])
 	const [charWidth, setCharWidth] = React.useState(7.2)
+	// The toolbar stands over the rows rather than above them, so the scrollbar
+	// runs the whole height of the panel.  Its height is the band the rows are
+	// padded down by, and it changes as the controls wrap.
+	const toolbarRef = React.useRef<HTMLDivElement>(null)
+	const [toolbarHeight, setToolbarHeight] = React.useState(0)
+	// The row-shape options are behind the hamburger, so the toolbar is one line
+	// deep until they are asked for.
+	const [showOptions, setShowOptions] = React.useState(false)
 	const [hover, setHover] = React.useState<HoverRange | null>(null)
 	const focusedRef = React.useRef<string | null>(null)
 	const probeRef = React.useRef<HTMLSpanElement>(null)
@@ -276,6 +284,16 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 	React.useLayoutEffect(() => {
 		const width = probeRef.current?.getBoundingClientRect().width
 		if (width) setCharWidth(width / 20)
+	}, [])
+
+	React.useLayoutEffect(() => {
+		const toolbar = toolbarRef.current
+		if (!toolbar) return
+		const measure = () => setToolbarHeight((current) => (current === toolbar.offsetHeight ? current : toolbar.offsetHeight))
+		const observer = new ResizeObserver(measure)
+		observer.observe(toolbar)
+		measure()
+		return () => observer.disconnect()
 	}, [])
 
 	// As many groups as fit the row, counting the ASCII column. Rounding the row
@@ -295,7 +313,10 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 
 	// Fixed-size row pool: the slot count only changes on resize, so scrolling
 	// rewrites the contents of the same row elements instead of remounting them.
-	const { first: firstRow, count: visibleRows } = rowWindow(scrollTop, viewport.height, ROW_HEIGHT, totalRows, OVERSCAN_ROWS)
+	// Row zero sits under the toolbar band, so the rows read a scroll offset that
+	// is negative until the band has been scrolled away.
+	const rowScroll = scrollTop - toolbarHeight
+	const { first: firstRow, count: visibleRows } = rowWindow(rowScroll, viewport.height, ROW_HEIGHT, totalRows, OVERSCAN_ROWS)
 
 	// Anchors the window at the section start whenever the address is near it, so
 	// the rows above stay reachable, and only re-anchors for a distant address.
@@ -329,9 +350,9 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 		if (pendingReveal === null || !scrollRef.current) return
 		const row = Math.floor((pendingReveal - alignedWindowStart) / bytesPerRow)
 		if (row < 0 || row >= totalRows) return
-		scrollRef.current.scrollTop = Math.max(0, row * ROW_HEIGHT - Math.max(0, viewport.height / 2 - ROW_HEIGHT))
+		scrollRef.current.scrollTop = Math.max(0, row * ROW_HEIGHT + toolbarHeight - Math.max(0, viewport.height / 2 - ROW_HEIGHT))
 		setPendingReveal(null)
-	}, [alignedWindowStart, bytesPerRow, pendingReveal, totalRows, viewport.height])
+	}, [alignedWindowStart, bytesPerRow, pendingReveal, toolbarHeight, totalRows, viewport.height])
 
 	const rows = React.useMemo<MemoryRowData[]>(() => Array.from({ length: visibleRows }, (unused, index) => {
 		const rowAddress = (alignedWindowStart + (firstRow + index) * bytesPerRow) >>> 0
@@ -431,85 +452,111 @@ function MemoryView({ memory, pc, returnAddresses, focusAddress, focusRequest = 
 		<div className="memory-view">
 			<span className="memory-probe" ref={probeRef}>00000000000000000000</span>
 
-			<div className="memory-sections">
-				{sections.map((entry) => (
-					<button
-						key={entry.id}
-						className={`memory-section ${entry.id === section.id ? 'active' : ''}`}
-						title={`${formatAddress(entry.start)} - ${formatAddress(entry.end)}`}
-						onClick={() => showSection(entry)}
-					>
-						{entry.label}
-					</button>
-				))}
-				<span className="memory-status">
-					<HexWord value={alignedWindowStart} /> - <HexWord value={windowEnd} />
-					{windowEnd < section.end && ' (windowed; use Go to move)'}
-				</span>
-			</div>
-
-			<div className="memory-controls">
-				<div className="memory-group-sizes">
-					{GROUP_SIZES.map((size) => (
-						<button
-							key={size}
-							className={`memory-group-size ${size === groupSize ? 'active' : ''}`}
-							title={`${size}-byte groups`}
-							onClick={() => setGroupSize(size)}
-						>
-							{size}
-						</button>
-					))}
-				</div>
-				<div className="memory-toggles">
-					<button
-						className={`memory-toggle ${powerOfTwoRows ? 'active' : ''}`}
-						title="Wrap rows at a power of two bytes"
-						onClick={(event) => setRowOptions((current) => nextToggles(current, 'powerOfTwo', event))}
-					>
-						^2
-					</button>
-					<button
-						className={`memory-toggle ${showAscii ? 'active' : ''}`}
-						title="Show the ASCII column"
-						onClick={(event) => setRowOptions((current) => nextToggles(current, 'ascii', event))}
-					>
-						ascii
-					</button>
-					<button
-						className={`memory-toggle ${showIcons ? 'active' : ''}`}
-						title="Name each non-printing byte with its own glyph"
-						disabled={!showAscii}
-						onClick={(event) => setRowOptions((current) => nextToggles(current, 'icons', event))}
-					>
-						icons
-					</button>
-				</div>
-				<input
-					className="memory-address-input"
-					type="text"
-					value={addressInput}
-					onChange={(event) => setAddressInput(event.target.value)}
-					onKeyDown={(event) => { if (event.key === 'Enter') goToAddress() }}
-					placeholder="0x10010000"
-				/>
-				<button className="memory-go" onClick={goToAddress}>Go</button>
-			</div>
-			{addressError && <div className="memory-error">{addressError}</div>}
-
 			<div className="memory-grid" ref={scrollRef} onScroll={(event) => { onScroll(event); clearHover() }}>
-				<div className="memory-scroll" style={{ height: totalRows * ROW_HEIGHT }}>
+				<span className="memory-origin" ref={originRef} />
+
+				{/* Stands over the rows on the origin the rows are placed against, so
+				    the grid can run the full height of the panel and own its scrollbar. */}
+				<div
+					className="memory-toolbar"
+					ref={toolbarRef}
+					style={{ top: frame.top, left: frame.left, width: frame.width }}
+					// The options belong to whoever is using them, so they fold away as
+					// soon as the toolbar is done with.
+					onBlur={(event) => {
+						if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setShowOptions(false)
+					}}
+				>
+					<div className="memory-toolbar-row">
+						<div className="memory-toggles">
+							{sections.map((entry) => (
+								<button
+									key={entry.id}
+									className={`memory-toggle ${entry.id === section.id ? 'active' : ''}`}
+									title={`${formatAddress(entry.start)} - ${formatAddress(entry.end)}`}
+									onClick={() => showSection(entry)}
+								>
+									{entry.label}
+								</button>
+							))}
+						</div>
+						<span className="memory-status">
+							<HexWord value={alignedWindowStart} /> - <HexWord value={windowEnd} />
+							{windowEnd < section.end && ' (windowed; use Go to move)'}
+						</span>
+						<input
+							className="memory-address-input"
+							type="text"
+							value={addressInput}
+							onChange={(event) => setAddressInput(event.target.value)}
+							onKeyDown={(event) => { if (event.key === 'Enter') goToAddress() }}
+							placeholder="0x10010000"
+						/>
+						<button className="memory-go" onClick={goToAddress}>Go</button>
+						<button
+							className={`memory-options ${showOptions ? 'active' : ''}`}
+							title="Row options"
+							aria-expanded={showOptions}
+							onClick={() => setShowOptions((current) => !current)}
+						>
+							&#9776;
+						</button>
+					</div>
+
+					{showOptions && (
+						<div className="memory-controls">
+							<div className="memory-group-sizes">
+								{GROUP_SIZES.map((size) => (
+									<button
+										key={size}
+										className={`memory-group-size ${size === groupSize ? 'active' : ''}`}
+										title={`${size}-byte groups`}
+										onClick={() => setGroupSize(size)}
+									>
+										{size}
+									</button>
+								))}
+							</div>
+							<div className="memory-toggles">
+								<button
+									className={`memory-toggle ${powerOfTwoRows ? 'active' : ''}`}
+									title="Wrap rows at a power of two bytes"
+									onClick={(event) => setRowOptions((current) => nextToggles(current, 'powerOfTwo', event))}
+								>
+									^2
+								</button>
+								<button
+									className={`memory-toggle ${showAscii ? 'active' : ''}`}
+									title="Show the ASCII column"
+									onClick={(event) => setRowOptions((current) => nextToggles(current, 'ascii', event))}
+								>
+									ascii
+								</button>
+								<button
+									className={`memory-toggle ${showIcons ? 'active' : ''}`}
+									title="Name each non-printing byte with its own glyph"
+									disabled={!showAscii}
+									onClick={(event) => setRowOptions((current) => nextToggles(current, 'icons', event))}
+								>
+									icons
+								</button>
+							</div>
+						</div>
+					)}
+					{addressError && <div className="memory-error">{addressError}</div>}
+				</div>
+
+				<div className="memory-scroll" style={{ height: toolbarHeight + totalRows * ROW_HEIGHT }}>
 					<div
 						className="memory-rows"
 						onMouseOver={handleHover}
 						onMouseLeave={clearHover}
 					>
-						<span className="memory-origin" ref={originRef} />
 						{rows.map((row, slot) => (
 							<MemoryRow
 								key={slot}
 								row={row}
-								top={rowTop(frame, firstRow + slot, ROW_HEIGHT, scrollTop)}
+								top={rowTop(frame, firstRow + slot, ROW_HEIGHT, rowScroll)}
 								left={frame.left}
 								width={frame.width}
 								groupSize={groupSize}
