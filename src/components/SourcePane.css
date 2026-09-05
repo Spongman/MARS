@@ -9,3 +9,18 @@
 	flex: 1;
 	min-height: 0;
 }
+
+/*
+ * The data tip for the gutter's disassembly, which Monaco's own hover cannot
+ * give: injected text and view zones are not in any model, so there is no
+ * position for a hover provider to answer about.
+ *
+ * It is drawn inside the editor wearing `monaco-hover`, so the border, the
+ * colours, the font and the layout are the ones the source's own hover uses and
+ * there is nothing here to keep in step with them.  Only where it sits is ours.
+ */
+.monaco-editor .monaco-hover.assembly-tooltip {
+	z-index: 50;
+	max-width: 500px;
+	width: max-content;
+}

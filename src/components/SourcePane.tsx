@@ -1,17 +1,130 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import type { CodeWord } from '../core/types'
 import { formatHex, formatWord, formatWordDigits } from '../core/format'
+import { splitHex } from './HexNumber'
+import type { HexDimming } from '../core/settings'
 import { disassemble, disassembleData } from '../core/disassembler'
 import { useTHRAXStore } from '../store/thraxStore'
-import { registerMipsDebugDataTips } from '../services/debugDataTips'
+import { describeToken, registerMipsDebugDataTips } from '../services/debugDataTips'
 import { setFindReplaceEditor } from '../services/findReplace'
 import { heatLevel } from '../tools/profile'
+import { useFlash } from './highlight'
 import './SourcePane.css'
 
 /** Gutter columns are separated, and closed off, by two spaces. */
 const COLUMN_GAP = '  '
+/** Width of the gutter's address column: `0x` and eight digits. */
+const ADDRESS_COLUMNS = 10
+/** What a data tip leaves between itself and the row it is describing. */
+const HOVER_GAP = 2
+
+/**
+ * The classes a gutter address wears, in both the shapes it is drawn in: text
+ * injected into a source line, and a row of a view zone for a word that has no
+ * line.  One function, so the two cannot drift apart.
+ *
+ * The hover is not in here.  A zone row is real DOM that is rebuilt whenever
+ * this is recomputed, and rebuilding the node the pointer is over is how a
+ * hover ends up never showing at all.
+ */
+export function gutterAddressClass(address: number | undefined, pc: number | null): string {
+	return [
+		'code-word',
+		'code-word-gutter-address',
+		address !== undefined ? 'code-word-address' : '',
+		address !== undefined && address === pc ? 'code-word-current' : '',
+	].filter(Boolean).join(' ')
+}
+
+/**
+ * The runs one gutter address is drawn as, so it reads the way every other
+ * panel spells a word: the prefix, the leading zeros the workspace dims, and
+ * the digits that carry the value.
+ *
+ * They are runs rather than one string because Monaco injects text as a single
+ * span per decoration, and the zeros need a class of their own.  Empty parts
+ * are dropped so a decoration is only spent on something to draw.
+ */
+export function addressRuns(address: number, mode: HexDimming): { text: string, dim: boolean }[] {
+	const { prefix, zeros, rest } = splitHex(formatWord(address), mode)
+	return [
+		{ text: prefix, dim: false },
+		{ text: zeros, dim: true },
+		{ text: rest, dim: false },
+	].filter((run) => run.text.length > 0)
+}
+
+/**
+ * The gutter of one line in three parts, so the disassembly can be drawn in a
+ * span of its own.
+ *
+ * Concatenated they are the gutter as a single string, which is the whole point:
+ * the columns are padded to one width for the file, and the source only stays
+ * aligned if splitting them up adds and drops nothing.
+ */
+export function gutterParts(lead: string, code: string, asm: string): { pre: string, asm: string, tail: string } {
+	return { pre: lead + code + (code && asm ? COLUMN_GAP : ''), asm, tail: COLUMN_GAP }
+}
+
+/**
+ * Which character of a monospace span the pointer is on.
+ *
+ * The span's own width divides evenly into the characters it drew, so this needs
+ * no font measurement.  A pointer past either end is clamped into the text,
+ * which is where a hover on the last character of a line ends up.
+ */
+export function hoveredColumn(x: number, rect: { left: number, width: number }, length: number): number {
+	if (length === 0 || rect.width === 0) return 0
+	return Math.min(length - 1, Math.max(0, Math.floor(((x - rect.left) / rect.width) * length)))
+}
+
+/**
+ * Where a disassembly data tip is drawn, and what it says.  The coordinates are
+ * relative to the editor, because that is what it is drawn inside.
+ */
+interface AssemblyTip {
+	left: number
+	top: number
+	/** Whether it hangs below the row or sits above it, as Monaco's own does. */
+	above: boolean
+	paragraphs: string[]
+}
+
+/** The paragraphs of a data tip, which is written as Markdown. */
+export function tipParagraphs(contents: string[]): string[] {
+	return contents
+		.flatMap((entry) => entry.split('\n\n'))
+		.map((paragraph) => paragraph.trim())
+		.filter((paragraph) => paragraph.length > 0)
+}
+
+/**
+ * One paragraph of a data tip, split into the runs it is drawn as.
+ *
+ * The tips are written for Monaco, which renders them as Markdown, and this one
+ * is drawn inside the editor beside the gutter: the same emphasis and the same
+ * code spans have to come out of it, or the two hovers would not look alike.
+ * Only the two marks the tips actually use are understood.
+ */
+export function tipRuns(paragraph: string): { text: string, kind: 'plain' | 'strong' | 'code' }[] {
+	const runs: { text: string, kind: 'plain' | 'strong' | 'code' }[] = []
+	let plain = ''
+	for (const match of paragraph.matchAll(/\*\*([^*]+)\*\*|`([^`]+)`|([\s\S]+?)(?=\*\*|`|$)/g)) {
+		const [, strong, code, rest] = match
+		if (rest !== undefined) {
+			plain += rest
+			continue
+		}
+		if (plain.length > 0) runs.push({ text: plain, kind: 'plain' })
+		plain = ''
+		runs.push(strong !== undefined ? { text: strong, kind: 'strong' } : { text: code, kind: 'code' })
+	}
+	if (plain.length > 0) runs.push({ text: plain, kind: 'plain' })
+	return runs
+}
 
 /** A file that assembled to nothing has no machine words and no breakpoints. */
 const NO_CODE_WORDS = new Map<number, CodeWord[]>()
@@ -36,7 +149,8 @@ interface SourcePaneProps {
 
 function SourcePane({ documentId }: SourcePaneProps) {
 	const store = useTHRAXStore()
-	const { activeDocumentId, branchHistory, breakpoints, callStack, documents, entryDocumentId, gutterColumns, heatMap: showHeatMap, heatMapLines: showHeatLines, hoveredAddress, pipeline, profile, selectedFrame, setBreakpointLines, setDocumentCode, toggleBreakpointAddress, toggleBreakpointLine } = store
+	const hexDimming = store.settings.hexDimming
+	const { activeDocumentId, branchHistory, breakpoints, callStack, documents, entryDocumentId, focusedSource, gutterColumns, heatMap: showHeatMap, heatMapLines: showHeatLines, hoveredAddress, pipeline, profile, selectedFrame, setBreakpointLines, setDocumentCode, toggleBreakpointAddress, toggleBreakpointLine } = store
 	// Bug 12: every editor marks up its own file.  The keyboard and the find
 	// widget still belong to the tab in front of the user, and a diagnostic with
 	// no file of its own to the entry file the assembler started from.
@@ -74,13 +188,120 @@ function SourcePane({ documentId }: SourcePaneProps) {
 	const copiedBreakpointLinesRef = React.useRef<{ text: string, relativeLines: number[] } | null>(null)
 	const isActiveFileRef = React.useRef(isActiveFile)
 	const titleRef = React.useRef(title)
+	// The mouse handler is installed once, so what it reaches for has to be a
+	// ref rather than the value that was current when it was installed.
+	const sourceIndexRef = React.useRef(sourceIndex)
+	/**
+	 * The line of this file the hovered address sits on, or undefined.
+	 *
+	 * The gutter is redrawn from this rather than from the address: an address in
+	 * another file, in data, or on the line already lit is not a reason to rebuild
+	 * every line's injected text.
+	 */
+	const hoveredLine = React.useMemo(() => {
+		if (store.hoveredAddress === null) return undefined
+		const location = sourceIndex.lineForAddress(store.hoveredAddress)
+		return location?.file === title ? location.line : undefined
+	}, [sourceIndex, store.hoveredAddress, title])
+	const hoveredAddressRef = React.useRef(store.hoveredAddress)
+	/** The address span of each zone row, so a hover can light one in place. */
+	const zoneAddressNodes = React.useRef<{ address: number, node: HTMLElement }[]>([])
+	const focusMemoryAddressRef = React.useRef(store.focusMemoryAddress)
+	const setHoveredAddressRef = React.useRef(store.setHoveredAddress)
+	const setHoveredRegisterRef = React.useRef(store.setHoveredRegister)
+	const handleAssemblyHoverRef = React.useRef<(element: HTMLElement | undefined, clientX: number) => void>(() => {})
+	const clearAssemblyTipRef = React.useRef<() => void>(() => {})
+	/** The editor's own node, which the data tip is drawn inside. */
+	const [editorNode, setEditorNode] = React.useState<HTMLElement | null>(null)
+	/** Monaco's own hover delay, so this one waits exactly as long. */
+	const hoverDelay = React.useRef(300)
 
+	const tipTimer = React.useRef<number | undefined>(undefined)
+
+	sourceIndexRef.current = sourceIndex
+	hoveredAddressRef.current = store.hoveredAddress
+	focusMemoryAddressRef.current = store.focusMemoryAddress
+	setHoveredAddressRef.current = store.setHoveredAddress
+	setHoveredRegisterRef.current = store.setHoveredRegister
 	toggleBreakpointLineRef.current = toggleBreakpointLine
 	toggleBreakpointAddressRef.current = toggleBreakpointAddress
 	setBreakpointLinesRef.current = setBreakpointLines
 	breakpointLinesRef.current = breakpointLines
 	isActiveFileRef.current = isActiveFile
 	titleRef.current = title
+
+	// What the pointer is over in the gutter's disassembly, if anything.  The
+	// gutter is not in any model, so Monaco's own hover never fires there and
+	// this is drawn over the token in the same widget instead.
+	const [assemblyTip, setAssemblyTip] = React.useState<AssemblyTip | null>(null)
+	const assemblyTipRef = React.useRef<AssemblyTip | null>(null)
+	assemblyTipRef.current = assemblyTip
+
+	const hoverRegister = React.useCallback((name: string | null) => {
+		setHoveredRegisterRef.current(name)
+	}, [])
+
+	const clearAssemblyTip = React.useCallback(() => {
+		window.clearTimeout(tipTimer.current)
+		hoverRegister(null)
+		if (assemblyTipRef.current !== null) setAssemblyTip(null)
+	}, [hoverRegister])
+
+	React.useEffect(() => () => window.clearTimeout(tipTimer.current), [])
+
+	const handleAssemblyHover = React.useCallback((element: HTMLElement | undefined, clientX: number) => {
+		// Monaco's hover can be moved into and read; so can this one.
+		if (element?.closest('.assembly-tooltip')) return
+		const span = element?.closest('.code-word-asm') ?? null
+		const text = span?.textContent ?? ''
+		const editor = editorNode
+		if (!span || text.length === 0 || !editor) {
+			clearAssemblyTip()
+			return
+		}
+		const rect = span.getBoundingClientRect()
+		const { registers, memory, fpRegisters, labels } = useTHRAXStore.getState()
+		const described = describeToken(text, hoveredColumn(clientX, rect, text.length), { registers, memory, fpRegisters, labels })
+		hoverRegister(described?.register ?? null)
+		if (!described) {
+			clearAssemblyTip()
+			return
+		}
+		// Drawn from the start of the token rather than from the pointer, so it
+		// holds still while the pointer crosses the one word it is describing, and
+		// the move that does not change it costs no render.
+		const paragraphs = tipParagraphs(described.contents)
+		const editorRect = editor.getBoundingClientRect()
+		// Below the row, unless the row is near enough the top of the editor that
+		// Monaco would have put its own hover there instead.
+		const above = rect.top - editorRect.top > editorRect.height / 2
+		const next: AssemblyTip = {
+			left: rect.left - editorRect.left + (described.start / text.length) * rect.width,
+			top: above ? rect.top - editorRect.top - HOVER_GAP : rect.bottom - editorRect.top + HOVER_GAP,
+			above,
+			paragraphs,
+		}
+		const current = assemblyTipRef.current
+		if (current && current.left === next.left && current.top === next.top && current.paragraphs.join('\n') === paragraphs.join('\n')) return
+		// Once a tip is up it follows the pointer at once, as Monaco's does; the
+		// delay is what it waits before the first one.
+		window.clearTimeout(tipTimer.current)
+		if (current !== null) setAssemblyTip(next)
+		else tipTimer.current = window.setTimeout(() => setAssemblyTip(next), hoverDelay.current)
+	}, [clearAssemblyTip, editorNode, hoverRegister])
+
+	handleAssemblyHoverRef.current = handleAssemblyHover
+	clearAssemblyTipRef.current = clearAssemblyTip
+
+	// A navigation from another panel names a file as well as a line, so only the
+	// editor holding that file answers it.
+	const navigating = useFlash('navigation', focusedSource && focusedSource.file === title ? focusedSource.request : null)
+	const navigatedLine = navigating && focusedSource?.file === title ? focusedSource.line : null
+
+	React.useEffect(() => {
+		if (!focusedSource || focusedSource.file !== title) return
+		editorRef.current?.revealLineInCenterIfOutsideViewport(focusedSource.line)
+	}, [focusedSource, title])
 
 	const handleEditorMount: OnMount = React.useCallback((editorInstance, monaco) => {
 		editorRef.current = editorInstance
@@ -96,6 +317,21 @@ function SourcePane({ documentId }: SourcePaneProps) {
 			})
 		}
 		const editorDomNode = editorInstance.getDomNode()
+		setEditorNode(editorDomNode)
+		hoverDelay.current = editorInstance.getOption(monaco.editor.EditorOption.hover).delay
+		// Monaco sizes the hover it shows over content from the editor's font and the
+		// hover it shows over the margin from nothing at all, so the profile popup
+		// came out at the page's size.  Publishing the font here lets one rule size
+		// every hover in the workspace, Monaco's own two included.
+		const publishHoverFont = () => {
+			const { fontSize, lineHeight } = editorInstance.getOption(monaco.editor.EditorOption.fontInfo)
+			editorDomNode?.style.setProperty('--thrax-hover-font-size', `${fontSize}px`)
+			editorDomNode?.style.setProperty('--thrax-hover-line-height', `${lineHeight / fontSize}`)
+		}
+		publishHoverFont()
+		editorInstance.onDidChangeConfiguration((event) => {
+			if (event.hasChanged(monaco.editor.EditorOption.fontInfo)) publishHoverFont()
+		})
 		const captureBreakpointCopy = (event: ClipboardEvent) => {
 			const model = editorInstance.getModel()
 			const selection = editorInstance.getSelection()
@@ -114,11 +350,41 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		}
 		editorDomNode?.addEventListener('copy', captureBreakpointCopy)
 		editorInstance.onMouseDown((event) => {
-			if (event.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return
+			if (event.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+				const line = event.target.position?.lineNumber
+				if (!line) return
+				toggleBreakpointLineRef.current(titleRef.current, line)
+				return
+			}
+			// The gutter strip is injected before the source, so a click there is
+			// aimed at the word it spells rather than at the text: it sends the
+			// memory view to that address.  The class is the only handle on it,
+			// since the mouse target says nothing about injected text.
+			if (!event.target.element?.closest('.code-word-address')) return
 			const line = event.target.position?.lineNumber
 			if (!line) return
-			toggleBreakpointLineRef.current(titleRef.current, line)
+			const address = sourceIndexRef.current.addressesForLine(titleRef.current, line)[0]
+			if (address !== undefined) focusMemoryAddressRef.current(address)
 		})
+		editorInstance.onMouseMove((event) => {
+			// The gutter's disassembly answers wherever it is drawn, injected into a
+			// line or in a row of a zone below one.
+			handleAssemblyHoverRef.current(event.target.element ?? undefined, event.event.browserEvent.clientX)
+			// A word row hanging below a line reports its own address through its own
+			// listeners.  Without this the line it hangs from answers for it, and
+			// every row of an expansion lit the first word of the instruction.
+			if (event.target.element?.closest('.code-word-zone')) return
+			const line = event.target.element?.closest('.code-word-address') ? event.target.position?.lineNumber : undefined
+			const address = line === undefined ? undefined : sourceIndexRef.current.addressesForLine(titleRef.current, line)[0]
+			setHoveredAddressRef.current(address ?? null)
+		})
+		editorInstance.onMouseLeave(() => {
+			setHoveredAddressRef.current(null)
+			clearAssemblyTipRef.current()
+		})
+		// The tip is placed against the editor rather than against the text, so it
+		// would be left pointing at nothing once the text moved under it.
+		editorInstance.onDidScrollChange(() => clearAssemblyTipRef.current())
 		// Each editor reports where its own file's markers moved to.
 		editorInstance.onDidChangeModelContent(() => {
 			const model = editorInstance.getModel()
@@ -260,13 +526,22 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		}
 		executionDecorationIds.current = editorInstance.deltaDecorations(executionDecorationIds.current, executionDecorations)
 
-		// The memory view reports the instruction word under the pointer.
+		// The memory view and the history report the word under the pointer.  The
+		// line number lights, which is the only mark there is when the address
+		// column is off; the address itself is lit in the gutter pass below.
 		const hoverDecorations: editor.IModelDeltaDecoration[] = []
-		const hoveredLine = lineAt(hoveredAddress)
 		if (hoveredLine !== undefined) {
 			hoverDecorations.push({
 				range: new monaco.Range(hoveredLine, 1, hoveredLine, 1),
-				options: { className: 'memory-hover-line', isWholeLine: true },
+				options: { lineNumberClassName: 'address-hovered-number', isWholeLine: true },
+			})
+		}
+		// A line another panel navigated to, lit in the navigation colour until it
+		// fades.  Whole-line, since it is the line rather than a value in it.
+		if (navigatedLine !== null) {
+			hoverDecorations.push({
+				range: new monaco.Range(navigatedLine, 1, navigatedLine, 1),
+				options: { className: 'flash-navigation-line', isWholeLine: true },
 			})
 		}
 		hoverDecorationIds.current = editorInstance.deltaDecorations(hoverDecorationIds.current, hoverDecorations)
@@ -293,7 +568,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 			const line = lineAt(selectedAddress)
 			if (line !== undefined) editorInstance.revealLineInCenterIfOutsideViewport(line)
 		}
-	}, [breakpointLines, breakpoints, callStack, hoveredAddress, pc, selectedFrame, showWordRows, sourceIndex, title])
+	}, [breakpointLines, breakpoints, callStack, hoveredLine, navigatedLine, pc, selectedFrame, showWordRows, sourceIndex, title])
 
 	// Assembly diagnostics for this file, as squiggles under the offending text.
 	// An empty list clears them, so a fixed line stops being marked as the user types.
@@ -357,6 +632,12 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		const model = editorInstance?.getModel()
 		if (!editorInstance || !monaco || !model) return
 
+		// The profile counts only while the heat map asks for it, and it starts from
+		// nothing when it is switched on.  An empty profile therefore means "not
+		// measured", which is not the same as "never ran": saying the latter told
+		// every line it had never executed whenever the heat map was turned on
+		// after a run.
+		const counting = (showHeatMap || showHeatLines) && profile.total > 0
 		const bhtEntryFor = new Map(branchHistory.entries.flatMap((entry) => entry.addresses.map((address) => [address, entry] as const)))
 		const lineCount = model.getLineCount()
 		const decorations: editor.IModelDeltaDecoration[] = []
@@ -374,6 +655,9 @@ function SourcePane({ documentId }: SourcePaneProps) {
 				const entry = profile.byAddress.get(word.address)
 				const text = word.word === null ? '' : disassemble(word.word, word.address) ?? ''
 				hover.push(`**${formatAddress(word.address)}**${text ? `  \`${text}\`` : ''}`)
+				// Nothing is counting unless the heat map asked for it, and a count
+				// nobody took is not a count of zero.
+				if (!counting) continue
 				if (!entry || entry.count === 0) {
 					hover.push('- Never executed')
 					continue
@@ -420,12 +704,7 @@ function SourcePane({ documentId }: SourcePaneProps) {
 
 	// Once the source assembles, the gutter columns sit between the line numbers
 	// and the source, one row per machine word.
-	React.useEffect(() => {
-		const editorInstance = editorRef.current
-		const monaco = monacoRef.current
-		const model = editorInstance?.getModel()
-		if (!editorInstance || !monaco || !model) return
-
+	const gutterText = React.useMemo(() => {
 		const rows = [...codeWords.values()].flat()
 		const assembly = new Map<number, string>()
 		rows.forEach((row, index) => {
@@ -434,34 +713,96 @@ function SourcePane({ documentId }: SourcePaneProps) {
 		// One width per column keeps the source aligned down the whole file.
 		const codeWidth = Math.max(0, ...rows.map((row) => formatCodeWord(row).length))
 		const assemblyWidth = Math.max(0, ...[...assembly.values()].map((text) => text.length))
-		const gutterText = (entry?: CodeWord) => {
-			const columns: string[] = []
-			if (showAddresses) columns.push((entry ? formatAddress(entry.address) : '').padEnd(10))
-			if (showCodeBytes) columns.push((entry ? formatCodeWord(entry) : '').padEnd(codeWidth))
-			if (showDisassembly) columns.push((entry ? assembly.get(entry.address) ?? '' : '').padEnd(assemblyWidth))
-			return columns.join(COLUMN_GAP) + COLUMN_GAP
+		// Three parts rather than one string, so the disassembly is a span of its own
+		// and a pointer over it can be told which character it is on.
+		const restParts = (entry?: CodeWord) => {
+			const code = showCodeBytes ? (entry ? formatCodeWord(entry) : '').padEnd(codeWidth) : ''
+			const asm = showDisassembly ? (entry ? assembly.get(entry.address) ?? '' : '').padEnd(assemblyWidth) : ''
+			// The gutter's own gap, plus the address column's width when this line
+			// has no address to fill it, so the source stays aligned either way.
+			const lead = !showAddresses ? '' : (entry ? '' : ' '.repeat(ADDRESS_COLUMNS)) + COLUMN_GAP
+			return gutterParts(lead, code, asm)
 		}
+		return { restParts }
+	}, [codeWords, showAddresses, showCodeBytes, showDisassembly])
+
+	React.useEffect(() => {
+		const editorInstance = editorRef.current
+		const monaco = monacoRef.current
+		const model = editorInstance?.getModel()
+		if (!editorInstance || !monaco || !model) return
+		const { restParts } = gutterText
 
 		const lineCount = model.getLineCount()
 		const decorations: editor.IModelDeltaDecoration[] = []
 		for (let line = 1; showGutter && line <= lineCount; line += 1) {
 			const words = codeWords.get(line)
+			const current = words?.[0].address === pc
+			const addressClass = gutterAddressClass(words?.[0].address, pc) + (line === hoveredLine ? ' address-hovered' : '')
+			const runs = showAddresses && words !== undefined ? addressRuns(words[0].address, hexDimming) : []
+			const parts = restParts(words?.[0])
+			const wordClass = current ? 'code-word code-word-current' : 'code-word'
+			// Every `before` is injected ahead of every `after`, and injections that
+			// tie are laid down in the order they are given, so the runs of one
+			// address stay in order and the rest of the gutter follows them.
 			decorations.push({
 				range: new monaco.Range(line, 1, line, 1),
 				options: {
 					// Lines without code keep the columns blank so the source stays aligned.
-					before: { content: gutterText(words?.[0]), inlineClassName: words?.[0].address === pc ? 'code-word code-word-current' : 'code-word' },
+					before: { content: runs[0]?.text ?? '', inlineClassName: `${addressClass}${runs[0]?.dim ? ' hex-zero' : ''}` },
+					after: { content: parts.pre, inlineClassName: wordClass },
 					// Monaco drops injected text on an empty range without this.
 					showIfCollapsed: true,
 					stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
 				},
 			})
+			for (const run of runs.slice(1)) {
+				decorations.push({
+					range: new monaco.Range(line, 1, line, 1),
+					options: {
+						before: { content: run.text, inlineClassName: `${addressClass}${run.dim ? ' hex-zero' : ''}` },
+						showIfCollapsed: true,
+						stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+					},
+				})
+			}
+			// Every `after` is laid down in the order it is given, so these follow
+			// the one above and the gutter reads pre, disassembly, gap.
+			for (const part of [
+				{ content: parts.asm, className: `${wordClass} code-word-asm` },
+				{ content: parts.tail, className: wordClass },
+			]) {
+				if (part.content.length === 0) continue
+				decorations.push({
+					range: new monaco.Range(line, 1, line, 1),
+					options: {
+						after: { content: part.content, inlineClassName: part.className },
+						showIfCollapsed: true,
+						stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+					},
+				})
+			}
 		}
 		codeWordDecorationIds.current = editorInstance.deltaDecorations(codeWordDecorationIds.current, decorations)
+		// The hovered line, not the hovered address: every address that is not on a
+		// line of this file leaves this alone rather than redrawing the whole file.
+	}, [code, gutterText, hexDimming, hoveredLine, pc, showAddresses, showGutter])
+
+	// The rows of a view zone, for words the source has no line for.  Rebuilding
+	// these throws away the DOM the pointer is over, so a hover must never be a
+	// reason to run this: the class is toggled in place below instead.
+	React.useEffect(() => {
+		const editorInstance = editorRef.current
+		const monaco = monacoRef.current
+		const model = editorInstance?.getModel()
+		if (!editorInstance || !monaco || !model) return
+		const { restParts } = gutterText
+		const lineCount = model.getLineCount()
 
 		const lineHeight = editorInstance.getOption(monaco.editor.EditorOption.lineHeight)
 		const fontInfo = editorInstance.getOption(monaco.editor.EditorOption.fontInfo)
 		const layout = editorInstance.getLayoutInfo()
+		const zoneAddresses: { address: number, node: HTMLElement }[] = []
 		editorInstance.changeViewZones((accessor) => {
 			for (const id of codeWordZoneIds.current) accessor.removeZone(id)
 			codeWordZoneIds.current = []
@@ -481,7 +822,32 @@ function SourcePane({ documentId }: SourcePaneProps) {
 					row.className = entry.address === pc ? 'code-word code-word-row-current' : 'code-word'
 					row.style.height = `${lineHeight}px`
 					row.style.lineHeight = `${lineHeight}px`
-					row.textContent = gutterText(entry)
+					const rowAddress = document.createElement('span')
+					rowAddress.className = gutterAddressClass(entry.address, pc)
+					if (entry.address === hoveredAddressRef.current) rowAddress.classList.add('address-hovered')
+					zoneAddresses.push({ address: entry.address, node: rowAddress })
+					// The address column can be off, in which case a word row has no
+					// address either: the gutter's own gap belongs to the column, so
+					// drawing one anyway runs it straight into the bytes.
+					for (const run of showAddresses ? addressRuns(entry.address, hexDimming) : []) {
+						const part = document.createElement('span')
+						if (run.dim) part.className = 'hex-zero'
+						part.textContent = run.text
+						rowAddress.append(part)
+					}
+					rowAddress.title = `Show ${formatWord(entry.address)} in memory`
+					rowAddress.addEventListener('mousedown', (event) => {
+						event.preventDefault()
+						event.stopPropagation()
+						focusMemoryAddressRef.current(entry.address)
+					})
+					rowAddress.addEventListener('mouseenter', () => setHoveredAddressRef.current(entry.address))
+					rowAddress.addEventListener('mouseleave', () => setHoveredAddressRef.current(null))
+					const parts = restParts(entry)
+					const asmSpan = document.createElement('span')
+					asmSpan.className = 'code-word-asm'
+					asmSpan.textContent = parts.asm
+					row.append(rowAddress, document.createTextNode(parts.pre), asmSpan, document.createTextNode(parts.tail))
 					domNode.append(row)
 
 					const marginRow = document.createElement('div')
@@ -511,7 +877,16 @@ function SourcePane({ documentId }: SourcePaneProps) {
 				codeWordZoneIds.current.push(accessor.addZone({ afterLineNumber: line, heightInLines: words.length - 1, domNode, marginDomNode }))
 			}
 		})
-	}, [breakpoints, code, codeWords, pc, showAddresses, showCodeBytes, showDisassembly, showGutter, showWordRows])
+		zoneAddressNodes.current = zoneAddresses
+	}, [breakpoints, code, gutterText, hexDimming, pc, showAddresses, showWordRows])
+
+	// Lights the zone row for the address under the pointer, wherever it is being
+	// pointed at, without touching the rows themselves.
+	React.useEffect(() => {
+		for (const { address, node } of zoneAddressNodes.current) {
+			node.classList.toggle('address-hovered', address === hoveredAddress)
+		}
+	}, [hoveredAddress])
 
 	return (
 		<div className="source-pane">
@@ -534,6 +909,33 @@ function SourcePane({ documentId }: SourcePaneProps) {
 					onMount={handleEditorMount}
 				/>
 			</div>
+			{assemblyTip && editorNode && createPortal(
+				// Drawn inside the editor, wearing Monaco's own hover classes, so it
+				// is the same widget the source shows: same border, same colours,
+				// same font, and they cannot drift apart.
+				<div
+					className="monaco-hover assembly-tooltip"
+					role="tooltip"
+					style={{ left: assemblyTip.left, top: assemblyTip.top, transform: assemblyTip.above ? 'translateY(-100%)' : undefined }}
+				>
+					<div className="monaco-hover-content">
+						<div className="hover-row markdown-hover">
+							<div className="hover-contents">
+								{assemblyTip.paragraphs.map((paragraph, index) => (
+									<p key={index}>
+										{tipRuns(paragraph).map((run, runIndex) => (
+											run.kind === 'strong' ? <strong key={runIndex}>{run.text}</strong>
+												: run.kind === 'code' ? <code key={runIndex}>{run.text}</code>
+													: <React.Fragment key={runIndex}>{run.text}</React.Fragment>
+										))}
+									</p>
+								))}
+							</div>
+						</div>
+					</div>
+				</div>,
+				editorNode,
+			)}
 		</div>
 	)
 }
