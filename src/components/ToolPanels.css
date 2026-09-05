@@ -1,10 +1,11 @@
+/* Fills the panel so a tool that stretches something has a height to stretch
+   into, and grows past it so the panel scrolls it. */
 .tool {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
 	font-size: 12px;
-	height: 100%;
-	overflow: auto;
+	min-height: 100%;
 }
 
 .tool-settings {
@@ -166,6 +167,7 @@
 /* Pipeline timeline: instructions down, cycles across. */
 /* A tool whose body is one scrolling surface, rather than the panel scrolling. */
 .tool.tool-fills {
+	height: 100%;
 	overflow: hidden;
 }
 

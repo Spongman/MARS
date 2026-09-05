@@ -5,10 +5,16 @@
 	--dv-tabs-and-actions-container-height: 31px;
 }
 
+/* One scroller per panel, and it is the panel: content that made its own
+   scroller sat inside the padding, so its scrollbar floated short of every
+   edge.  The bar is always there rather than appearing with the content that
+   needs it, and stands directly against the content, so there is no padding on
+   that side to hold it off. */
 .dock-panel {
 	height: 100%;
-	overflow: auto;
-	padding: 10px;
+	overflow-x: auto;
+	overflow-y: scroll;
+	padding: 10px 0 10px 10px;
 	box-sizing: border-box;
 	background: var(--surface-base);
 }
